@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <wx/panel.h>
 #include <wx/wx.h>
 #include "../widgets/widgets.hpp"
 #include "home_frame/panels/panels.hpp"
@@ -51,16 +50,28 @@ namespace frames {
 
             void InitializeConnection(const in_addr ip_address);
 
+            void LoadChannelData();
+
+            void SendMessage(const char* message, const uint32_t message_len);
+
             uint16_t GetServerId();
             uint32_t GetChannelId();
             SwiftNetClientConnection* GetClientConnection();
-
-            void RequestChannelData();
+            std::vector<objects::Database::ChannelMessageRow>* GetChannelMessages();
+            wxPanel* GetMessagesPanel();
+            wxTextCtrl* GetNewMessageInput();
         private:
+            void HandleLoadChannelDataRequest(SwiftNetClientPacketData* const packet_data);
+
             SwiftNetClientConnection* client_connection;
             
             uint32_t channel_id;
             uint16_t server_id;
+
+            wxTextCtrl* new_message_input;
+            wxPanel* messages_panel;
+
+            std::vector<objects::Database::ChannelMessageRow> channel_messages;
         };
 
         ChatRoomFrame(const in_addr ip_address, const uint16_t server_id);
@@ -68,7 +79,7 @@ namespace frames {
 
         void DrawChannels();
 
-        void RequestLoadServerInformation();
+        void LoadServerInformation();
 
         void HandleLoadServerInfoResponse(SwiftNetClientPacketData* packet_data);
 

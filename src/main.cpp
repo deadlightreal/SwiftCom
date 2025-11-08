@@ -8,14 +8,16 @@
 #include "main.hpp"
 
 Application::Application() {
+    this->database = new objects::Database();
+
     this->home_frame = new frames::HomeFrame();
 }
 
 Application::~Application() {
-    const objects::LocalStorageDataManager* local_storage_data_manager = this->GetLocalStorageDataManager();
+    const objects::Database* database = this->GetDatabase();
     
-    if (local_storage_data_manager != nullptr) {
-        delete local_storage_data_manager;
+    if (database != nullptr) {
+        delete database;
     }
 
     swiftnet_cleanup();
@@ -29,8 +31,6 @@ bool Application::OnInit() {
     srand(time(0));
 
     frames::HomeFrame* home_frame = this->GetHomeFrame();
-
-    this->local_storage_data_manager = new objects::LocalStorageDataManager();
 
     home_frame->GetHostingPanel()->DrawServers();
     home_frame->GetServersPanel()->DrawServers();
@@ -63,8 +63,8 @@ frames::HomeFrame* Application::GetHomeFrame() {
     return this->home_frame;
 }
 
-objects::LocalStorageDataManager* Application::GetLocalStorageDataManager() {
-    return this->local_storage_data_manager;
+objects::Database* Application::GetDatabase() {
+    return this->database;
 }
 
 wxIMPLEMENT_APP(Application);

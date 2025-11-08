@@ -31,16 +31,14 @@ file(GLOB_RECURSE SOURCES "../src/*.cpp")
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 find_package(swiftnet REQUIRED)
-target_include_directories(main PRIVATE ${SWIFTNET_INCLUDE_DIRS})
-target_link_libraries(main PRIVATE ${SWIFTNET_LIBRARIES})
+target_link_libraries(main PRIVATE swiftnet::swiftnet)
 
 find_package(SQLite3 REQUIRED)
 target_include_directories(main PRIVATE ${SQLite3_INCLUDE_DIRS})
 target_link_libraries(main PRIVATE ${SQLite3_LIBRARIES})
 
-find_package(wxWidgets REQUIRED COMPONENTS core base)
-include(${wxWidgets_USE_FILE})
-target_link_libraries(main PRIVATE ${wxWidgets_LIBRARIES})
+find_package(wxWidgets CONFIG REQUIRED)
+target_link_libraries(main PRIVATE wx::core wx::base)
 
 if(APPLE)
 

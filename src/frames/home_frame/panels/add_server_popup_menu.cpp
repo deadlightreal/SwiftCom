@@ -1,6 +1,8 @@
 #include "panels.hpp"
 #include "../../../main.hpp"
+#include "../../../utils/crypto/crypto.hpp"
 #include "../../../utils/net/net.hpp"
+#include "swift_net.h"
 
 using namespace frames::home_frame::panels;
 
@@ -11,16 +13,6 @@ typedef enum {
 } ServerExistsResponse;
 
 static ServerExistsResponse server_exists = NO_RESPONSE;
-
-static void PacketCallback(SwiftNetClientPacketData* packet_data) {
-    const JoinServerResponse* response = (JoinServerResponse*)swiftnet_client_read_packet(packet_data, sizeof(JoinServerResponse));
-
-    if(response->status == SUCCESS) {
-        server_exists = EXISTS;
-    } else {
-        server_exists = FAILED_STATUS;
-    }
-}
 
 ServersPanel::AddServerPopupMenu::AddServerPopupMenu(wxWindow* parent, wxPoint pos) : wxDialog(parent, wxID_ANY, wxT("Add Server"), pos, wxSize(400, 200), wxSTAY_ON_TOP | wxDEFAULT_DIALOG_STYLE) {
     wxTextCtrl* server_code_input = new wxTextCtrl(this, 0, "Server Code");
@@ -46,31 +38,42 @@ ServersPanel::AddServerPopupMenu::AddServerPopupMenu(wxWindow* parent, wxPoint p
     SetSizerAndFit(sizer);
 }
 
+ServersPanel::AddServerPopupMenu::~AddServerPopupMenu() {
+
+}
+
 void ServersPanel::AddServerPopupMenu::RequestServerExistsConfirmation(const char* ip_address, const uint16_t server_id) {
     SwiftNetClientConnection* client = swiftnet_create_client(ip_address, server_id);
 
-    swiftnet_client_set_message_handler(client, PacketCallback);
-
     const RequestInfo request_info = {.request_type = JOIN_SERVER};
 
-    while (server_exists == NO_RESPONSE) {
-        SwiftNetPacketBuffer buffer = swiftnet_client_create_packet_buffer(sizeof(request_info));
-        
-        swiftnet_client_append_to_packet(&request_info, sizeof(RequestInfo), &buffer);
+    SwiftNetPacketBuffer buffer = swiftnet_client_create_packet_buffer(sizeof(request_info));
+    
+    swiftnet_client_append_to_packet(&request_info, sizeof(RequestInfo), &buffer);
 
-        swiftnet_client_send_packet(client, &buffer);
+    SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(client, &buffer);
 
-        swiftnet_client_destroy_packet_buffer(&buffer);
-
-        usleep(250000);
+    const RequestInfo* const request_info_received = (RequestInfo*)swiftnet_client_read_packet(packet_data, sizeof(RequestInfo));
+    if (request_info_received->request_type != RequestType::JOIN_SERVER) {
+        return;
     }
+    
+    const JoinServerResponse* const response = (JoinServerResponse*)swiftnet_client_read_packet(packet_data, sizeof(JoinServerResponse));
+
+    if(response->status == RequestStatus::SUCCESS) {
+        server_exists = ServerExistsResponse::EXISTS;
+    } else {
+        server_exists = ServerExistsResponse::FAILED_STATUS;
+    }
+
+    swiftnet_client_destroy_packet_buffer(&buffer);
 
     in_addr parsed_ip_address;
     inet_pton(AF_INET, ip_address, &parsed_ip_address);
 
     switch (server_exists) {
         case EXISTS:
-            wxGetApp().GetLocalStorageDataManager()->GetDatabase()->InsertJoinedServer(server_id, parsed_ip_address);
+            wxGetApp().GetDatabase()->InsertJoinedServer(server_id, parsed_ip_address);
 
             break;
         case FAILED_STATUS:

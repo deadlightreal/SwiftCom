@@ -18,7 +18,8 @@ typedef enum {
 typedef enum {
     JOIN_SERVER,
     LOAD_SERVER_INFORMATION,
-    LOAD_CHANNEL_DATA
+    LOAD_CHANNEL_DATA,
+    SEND_MESSAGE
 } RequestType;
 
 typedef struct {
@@ -29,6 +30,11 @@ typedef struct {
 typedef struct {
     uint32_t channel_id;
 } LoadChannelDataRequest;
+
+typedef struct {
+    uint32_t message_len;
+    uint32_t channel_id;
+} SendMessageRequest;
 
 // Responses
 typedef struct {
@@ -56,14 +62,14 @@ public:
 
     void AddChatRoomFrame(frames::ChatRoomFrame* frame);
 
-    objects::LocalStorageDataManager* GetLocalStorageDataManager();
+    objects::Database* GetDatabase();
     frames::HomeFrame* GetHomeFrame();
     std::vector<frames::ChatRoomFrame*>* GetChatRoomFrames();
     frames::ChatRoomFrame* GetChatRoomFrameById(const uint16_t server_id);
 private:
     frames::HomeFrame* home_frame;
 
-    objects::LocalStorageDataManager* local_storage_data_manager;
+    objects::Database* database;
 
     std::vector<frames::ChatRoomFrame*> chat_room_frames;
 };

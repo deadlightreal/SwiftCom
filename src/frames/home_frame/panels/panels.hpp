@@ -12,10 +12,18 @@ namespace frames::home_frame::panels {
         ~HostingPanel();
 
         void DrawServers();
+
+        void InsertHostedServer(const uint16_t server_id);
+
+        objects::HostedServer* GetServerById(const uint16_t server_id);
+
+        std::vector<objects::HostedServer>* GetHostedServers();
     private:
         void CreateNewServer(wxMouseEvent&);
 
         wxPanel* hosted_servers_panel;
+
+        std::vector<objects::HostedServer> hosted_servers;
     };
 
     class ServersPanel : public wxPanel {
@@ -41,7 +49,11 @@ namespace frames::home_frame::panels {
         void DrawServers();
 
         void OpenAddServerPopupMenu(wxMouseEvent& event, wxWindow* parent);
+
+        std::vector<objects::JoinedServer>* GetJoinedServers();
     private:
+        std::vector<objects::JoinedServer> joined_servers;
+
         wxPanel* joined_servers_panel;
     };
 }

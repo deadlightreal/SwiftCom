@@ -1,5 +1,6 @@
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -28,7 +29,7 @@ HostingPanel::HostingPanel(wxPanel* parent_panel) : wxPanel(parent_panel) {
     wxBoxSizer* manage_all_servers_sizer = new wxBoxSizer(wxHORIZONTAL);
 
     widgets::Button* start_all_servers_button = new widgets::Button(this, "Start All", [this](wxMouseEvent& event) {
-        for (auto &server : wxGetApp().GetLocalStorageDataManager()->GetSavedData().hosted_servers) {
+        for (auto &server : *wxGetApp().GetHomeFrame()->GetHostingPanel()->GetHostedServers()) {
             server.StartServer();
         }
     });
@@ -37,7 +38,7 @@ HostingPanel::HostingPanel(wxPanel* parent_panel) : wxPanel(parent_panel) {
     start_all_servers_button->SetMaxSize(wxSize(-1, 40));
 
     widgets::Button* stop_all_servers_button = new widgets::Button(this, "Stop All", [this](wxMouseEvent& event) {
-        for (auto &server : wxGetApp().GetLocalStorageDataManager()->GetSavedData().hosted_servers) {
+        for (auto &server : *wxGetApp().GetHomeFrame()->GetHostingPanel()->GetHostedServers()) {
             server.StopServer();
         }
     });
@@ -57,6 +58,17 @@ HostingPanel::HostingPanel(wxPanel* parent_panel) : wxPanel(parent_panel) {
     main_sizer_margin->AddStretchSpacer(2);
 
     this->SetSizer(main_sizer_margin);
+
+    // Load hosted servers
+    std::vector<objects::Database::HostedServerRow>* hosted_servers = wxGetApp().GetDatabase()->SelectHostedServers();
+
+    auto stored_hosted_servers = this->GetHostedServers();
+
+    for (auto &server : *hosted_servers) {
+        stored_hosted_servers->push_back(objects::HostedServer(server.server_id));
+    }
+
+    free(hosted_servers);
 }
 
 HostingPanel::~HostingPanel() {
@@ -72,7 +84,7 @@ void HostingPanel::DrawServers() {
 
     in_addr public_ip_address = utils::net::get_public_ip();
 
-    for (auto &server : wxGetApp().GetLocalStorageDataManager()->GetSavedData().hosted_servers) {
+        for (auto &server : *wxGetApp().GetHomeFrame()->GetHostingPanel()->GetHostedServers()) {
         uint16_t server_id = server.GetServerId();
 
         std::vector<uint8_t> invitation_data;
@@ -114,7 +126,25 @@ void HostingPanel::DrawServers() {
 void HostingPanel::CreateNewServer(wxMouseEvent&) {
     uint16_t random_generated_id = rand();
 
-    wxGetApp().GetLocalStorageDataManager()->InsertHostedServer(random_generated_id);
+    wxGetApp().GetDatabase()->InsertHostedServer(random_generated_id);
 
     this->DrawServers();
+}
+
+void HostingPanel::InsertHostedServer(const uint16_t server_id) {
+    this->GetHostedServers()->push_back(objects::HostedServer(server_id));
+}
+
+objects::HostedServer* HostingPanel::GetServerById(const uint16_t server_id) {
+    for (auto &server : *this->GetHostedServers()) {
+        if (server.GetServerId() == server_id) {
+            return &server;
+        }
+    }
+
+    return nullptr;
+}
+
+std::vector<objects::HostedServer>* HostingPanel::GetHostedServers() {
+    return &this->hosted_servers;
 }

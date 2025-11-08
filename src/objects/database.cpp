@@ -17,6 +17,10 @@ Database::Database() {
     this->PrepareStatements();
 }
 
+Database::~Database() {
+
+}
+
 void Database::OpenDatabase() {
     sqlite3* database_ptr;
 
@@ -91,8 +95,22 @@ int Database::InsertHostedServerUser(const uint16_t server_id, in_addr ip_addres
     return 0;
 }
 
-int Database::InsertChannelMessage(const char* message, const uint32_t channel_id) {
+int Database::InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id) {
+    sqlite3_stmt* stmt = this->GetStatement("insert_channel_message");
 
+    sqlite3_bind_text(stmt, 1, message, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, channel_id);
+    sqlite3_bind_int(stmt, 3, sender_id);
+
+    int result = sqlite3_step(stmt);
+    if (result != SQLITE_DONE) {
+        std::cerr << "Failed to insert channel message" << std::endl;
+        return -1;
+    }
+
+    sqlite3_reset(stmt);
+
+    return 0;
 }
 
 int Database::InsertJoinedServer(const uint16_t server_id, in_addr ip_address) {

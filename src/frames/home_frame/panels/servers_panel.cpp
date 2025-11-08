@@ -36,6 +36,17 @@ ServersPanel::ServersPanel(wxPanel* parent_panel) : wxPanel(parent_panel) {
     main_sizer_margin->AddStretchSpacer(2);
 
     this->SetSizer(main_sizer_margin);
+
+    // Load joined servers
+    std::vector<objects::Database::JoinedServerRow>* joined_servers = wxGetApp().GetDatabase()->SelectJoinedServers();
+
+    auto stored_joined_servers = this->GetJoinedServers();
+
+    for (auto &server : *joined_servers) {
+        stored_joined_servers->push_back(objects::JoinedServer(server.server_id, server.ip_address));
+    }
+
+    free(joined_servers);
 }
 
 ServersPanel::~ServersPanel() {
@@ -49,7 +60,7 @@ void ServersPanel::DrawServers() {
 
     this->joined_servers_panel->SetSizer(v_sizer);
 
-    for (auto &server : wxGetApp().GetLocalStorageDataManager()->GetSavedData().joined_servers) {
+    for (auto &server : *wxGetApp().GetHomeFrame()->GetServersPanel()->GetJoinedServers()) {
         uint16_t server_id = server.GetServerId();
         in_addr server_ip_address = server.GetServerIpAddress();
 
@@ -94,4 +105,8 @@ void ServersPanel::OpenAddServerPopupMenu(wxMouseEvent& event, wxWindow* parent)
     popup_menu->CentreOnParent();
     popup_menu->ShowModal();
     popup_menu->Destroy();
+}
+
+std::vector<objects::JoinedServer>* ServersPanel::GetJoinedServers() {
+    return &this->joined_servers;
 }

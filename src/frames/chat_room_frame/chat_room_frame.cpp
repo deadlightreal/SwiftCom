@@ -14,22 +14,6 @@
 
 using namespace frames;
 
-static void PacketCallback(SwiftNetClientPacketData* restrict const packet_data) {
-    const RequestInfo* request_info = (RequestInfo*)swiftnet_client_read_packet(packet_data, sizeof(RequestInfo));
-
-    switch(request_info->request_type) {
-        case LOAD_SERVER_INFORMATION:
-        {
-            ChatRoomFrame* chat_room_frame = wxGetApp().GetChatRoomFrameById(packet_data->metadata.port_info.source_port);
-            chat_room_frame->HandleLoadServerInfoResponse(packet_data);
-
-            break;
-        }
-        default:
-            break;
-    }
-}
-
 ChatRoomFrame::ChatRoomFrame(const in_addr ip_address, const uint16_t server_id) : wxFrame(wxGetApp().GetHomeFrame(), wxID_ANY, "Chat Room", wxDefaultPosition, wxSize(800, 600)), server_id(server_id), server_ip_address(ip_address)  {
     wxPanel* main_panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_SIMPLE);
 
@@ -47,16 +31,15 @@ ChatRoomFrame::ChatRoomFrame(const in_addr ip_address, const uint16_t server_id)
 
     const char* string_ip = inet_ntoa(ip_address);
 
-    SwiftNetClientConnection* restrict const connection = swiftnet_create_client(string_ip, server_id);
+    SwiftNetClientConnection* const connection = swiftnet_create_client(string_ip, server_id);
     if (connection == NULL) {
         // Handle server not started, or any error
+        return;
     }
 
     this->client_connection = connection;
 
-    swiftnet_client_set_message_handler(connection, PacketCallback);
-
-    this->RequestLoadServerInformation();
+    this->LoadServerInformation();
 }
 
 ChatRoomFrame::~ChatRoomFrame() {
@@ -92,13 +75,24 @@ void ChatRoomFrame::DrawChannels() {
 }
 
 void ChatRoomFrame::HandleLoadServerInfoResponse(SwiftNetClientPacketData* packet_data) {
+    RequestInfo* request_info = (RequestInfo*)swiftnet_client_read_packet(packet_data, sizeof(RequestType));
+    if (request_info->request_type != LOAD_SERVER_INFORMATION) {
+        return;
+    }
+
     LoadServerInformationResponse* response = (LoadServerInformationResponse*)swiftnet_client_read_packet(packet_data, packet_data->metadata.data_length - sizeof(RequestType));
+
+    printf("loading\n");
 
     if (response->status != SUCCESS) {
         return;
     }
 
+    printf("loading channels\n");
+
     for (uint32_t i = 0; i < response->server_chat_channels_size; i++) {
+        printf("loading channel\n");
+
         auto channel = response->server_chat_channels[i];
 
         this->GetChatChannels()->push_back(new ChatChannel(channel.id, channel.name));
@@ -111,8 +105,8 @@ std::vector<ChatRoomFrame::ChatChannel*>* ChatRoomFrame::GetChatChannels() {
     return &this->chat_channels;
 }
 
-void ChatRoomFrame::RequestLoadServerInformation() {
-    SwiftNetClientConnection* restrict const connection = this->GetConnection();
+void ChatRoomFrame::LoadServerInformation() {
+    SwiftNetClientConnection* const connection = this->GetConnection();
 
     const RequestInfo request_info = {
         .request_type = LOAD_SERVER_INFORMATION
@@ -122,7 +116,14 @@ void ChatRoomFrame::RequestLoadServerInformation() {
 
     swiftnet_client_append_to_packet(&request_info, sizeof(request_info), &buffer);
 
-    swiftnet_client_send_packet(connection, &buffer);
+    SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(connection, &buffer);
+    if (packet_data == NULL) {
+        return;
+    }
+
+    this->HandleLoadServerInfoResponse(packet_data);
+
+    swiftnet_client_destroy_packet_buffer(&buffer);
 }
 
 ChatRoomFrame::ChatPanel* ChatRoomFrame::GetChatPanel() {

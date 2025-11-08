@@ -23,11 +23,11 @@ static void SerializeChannelMessages(SwiftNetPacketBuffer* buffer, std::vector<D
 static void HandleLoadChannelDataRequest(HostedServer* server, SwiftNetServerPacketData* packet_data) {
     LoadChannelDataRequest* request = (LoadChannelDataRequest*)swiftnet_server_read_packet(packet_data, sizeof(LoadChannelDataRequest));
 
-    Database* database = wxGetApp().GetLocalStorageDataManager()->GetDatabase();
+    Database* database = wxGetApp().GetDatabase();
 
     const uint32_t user_id = database->SelectUserId(packet_data->metadata.sender.sender_address.sin_addr.s_addr, server->GetServerId());
 
-    server->AddConnectedUser((ConnectedUser){.addr_data = packet_data->metadata.sender, .user_id = user_id});
+    server->AddConnectedUser((ConnectedUser){.addr_data = packet_data->metadata.sender, .user_id = user_id, .port = packet_data->metadata.port_info.source_port});
 
     auto channel_messages = database->SelectChannelMessages(request->channel_id);
 
@@ -54,7 +54,7 @@ static void HandleLoadChannelDataRequest(HostedServer* server, SwiftNetServerPac
 
     SerializeChannelMessages(&buffer, channel_messages);
 
-    swiftnet_server_send_packet(server->GetServer(), &buffer, packet_data->metadata.sender);
+    swiftnet_server_make_response(server->GetServer(), packet_data, &buffer);
 
     swiftnet_server_destroy_packet_buffer(&buffer);
 }
@@ -63,14 +63,19 @@ static void HandleJoinServerRequest(HostedServer* server, SwiftNetServerPacketDa
     const in_addr ip_address = packet_data->metadata.sender.sender_address.sin_addr;
     const uint16_t server_id = server->GetServerId();
 
-    int result = wxGetApp().GetLocalStorageDataManager()->GetDatabase()->InsertHostedServerUser(server_id, ip_address);
+    int result = wxGetApp().GetDatabase()->InsertHostedServerUser(server_id, ip_address);
     if (result != 0) {
+        const RequestInfo request_info = {
+            .request_type = JOIN_SERVER
+        };
+
         const JoinServerResponse response = {
             .status = FAIL
         };
 
-        SwiftNetPacketBuffer buffer = swiftnet_server_create_packet_buffer(sizeof(response));
+        SwiftNetPacketBuffer buffer = swiftnet_server_create_packet_buffer(sizeof(response) + sizeof(request_info));
 
+        swiftnet_server_append_to_packet(&request_info, sizeof(request_info), &buffer);
         swiftnet_server_append_to_packet(&response, sizeof(response), &buffer);
 
         swiftnet_server_send_packet(server->GetServer(), &buffer, packet_data->metadata.sender);
@@ -78,21 +83,26 @@ static void HandleJoinServerRequest(HostedServer* server, SwiftNetServerPacketDa
         swiftnet_server_destroy_packet_buffer(&buffer);
     }
 
-    SwiftNetPacketBuffer buffer = swiftnet_server_create_packet_buffer(sizeof(JoinServerResponse));
+    SwiftNetPacketBuffer buffer = swiftnet_server_create_packet_buffer(sizeof(JoinServerResponse) + sizeof(RequestInfo));
+
+    const RequestInfo request_info = {
+        .request_type = JOIN_SERVER
+    };
 
     const JoinServerResponse response = {
         .status = SUCCESS
     };
 
+    swiftnet_server_append_to_packet(&request_info, sizeof(request_info), &buffer);
     swiftnet_server_append_to_packet(&response, sizeof(response), &buffer);
 
-    swiftnet_server_send_packet(server->GetServer(), &buffer, packet_data->metadata.sender);
+    swiftnet_server_make_response(server->GetServer(), packet_data, &buffer);
 
     swiftnet_server_destroy_packet_buffer(&buffer);
 }
 
 static void HandleLoadServerInformationRequest(HostedServer* server, SwiftNetServerPacketData* packet_data) {
-    auto server_chat_channels = wxGetApp().GetLocalStorageDataManager()->GetDatabase()->SelectServerChatChannels(server->GetServerId());
+    auto server_chat_channels = wxGetApp().GetDatabase()->SelectServerChatChannels(server->GetServerId());
 
     SwiftNetServer* server_swiftnet = server->GetServer();
 
@@ -119,7 +129,7 @@ static void HandleLoadServerInformationRequest(HostedServer* server, SwiftNetSer
 
     swiftnet_server_append_to_packet(&request_info, sizeof(request_info), &buffer);
     swiftnet_server_append_to_packet(response, bytes_to_alloc, &buffer);
-    swiftnet_server_send_packet(server_swiftnet, &buffer, packet_data->metadata.sender);
+    swiftnet_server_make_response(server_swiftnet, packet_data, &buffer);
 
     swiftnet_server_destroy_packet_buffer(&buffer);
 
@@ -128,10 +138,23 @@ static void HandleLoadServerInformationRequest(HostedServer* server, SwiftNetSer
     free(response);
 }
 
-static void PacketCallback(SwiftNetServerPacketData*  packet_data) {
+static void HandleSendMessageRequest(HostedServer* server, SwiftNetServerPacketData* packet_data) {
+    SendMessageRequest* request = (SendMessageRequest*)swiftnet_server_read_packet(packet_data, sizeof(SendMessageRequest));
+
+    const char* message = (const char*)swiftnet_server_read_packet(packet_data, request->message_len);
+
+    const ConnectedUser* connected_user = server->GetUserByIp(packet_data->metadata.sender, packet_data->metadata.port_info.source_port);
+    if (connected_user == nullptr) {
+        std::cout << "User not connected" << std::endl;
+    }
+
+    wxGetApp().GetDatabase()->InsertChannelMessage(message, request->channel_id, connected_user->port);
+}
+
+static void PacketCallback(SwiftNetServerPacketData* packet_data) {
     const uint16_t server_id = packet_data->metadata.port_info.destination_port;
 
-    HostedServer* server = wxGetApp().GetLocalStorageDataManager()->GetServerById(server_id);
+    HostedServer* server = wxGetApp().GetHomeFrame()->GetHostingPanel()->GetServerById(server_id);
     if (server == nullptr) {
         printf("null server\n");
         return;
@@ -141,8 +164,9 @@ static void PacketCallback(SwiftNetServerPacketData*  packet_data) {
 
     switch (request_info->request_type) {
         case JOIN_SERVER: HandleJoinServerRequest(server, packet_data); break;
-        case LOAD_SERVER_INFORMATION: HandleLoadServerInformationRequest(server, packet_data);
-        case LOAD_CHANNEL_DATA: HandleLoadChannelDataRequest(server, packet_data);
+        case LOAD_SERVER_INFORMATION: HandleLoadServerInformationRequest(server, packet_data); break;
+        case LOAD_CHANNEL_DATA: HandleLoadChannelDataRequest(server, packet_data); break;
+        case SEND_MESSAGE: HandleSendMessageRequest(server, packet_data); break;
     }
 }
 
@@ -176,6 +200,16 @@ void HostedServer::StopServer() {
 
 void HostedServer::AddConnectedUser(const ConnectedUser connected_user) {
     this->GetConnectedUsers()->push_back(connected_user);
+}
+
+ConnectedUser* HostedServer::GetUserByIp(const SwiftNetClientAddrData addr_data, const uint16_t port) {
+    for (auto &user : *this->GetConnectedUsers()) {
+        if (port == user.port && memcmp(&addr_data, &user.addr_data, sizeof(SwiftNetClientAddrData)) == 0) {
+            return &user;
+        }
+    }
+
+    return nullptr;
 }
 
 std::vector<ConnectedUser>* HostedServer::GetConnectedUsers() {

@@ -17,6 +17,7 @@ namespace objects {
 
     typedef struct {
         SwiftNetClientAddrData addr_data;
+        uint16_t port;
         uint32_t user_id;
     } ConnectedUser;
 
@@ -29,6 +30,8 @@ namespace objects {
         void StopServer();
 
         void AddConnectedUser(const ConnectedUser connected_user);
+
+        ConnectedUser* GetUserByIp(const SwiftNetClientAddrData addr_data, const uint16_t port);
 
         std::vector<ConnectedUser>* GetConnectedUsers();
         SwiftNetServer* GetServer();
@@ -101,7 +104,7 @@ namespace objects {
         int InsertHostedServerUser(const uint16_t server_id, in_addr ip_address);
         int InsertJoinedServer(const uint16_t server_id, in_addr ip_address);
         int InsertServerChatChannel(const char* name, const uint16_t server_id);
-        int InsertChannelMessage(const char* message, const uint32_t channel_id);
+        int InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id);
 
         sqlite3_stmt* GetStatement(const char* statement_name);
 
@@ -110,34 +113,5 @@ namespace objects {
     private:
         sqlite3* database_connection;
         std::unordered_map<const char*, sqlite3_stmt*> statements;
-    };
-
-    class LocalStorageDataManager {
-    public:
-        struct LocalStorageSavedData {
-            std::vector<HostedServer> hosted_servers;
-            std::vector<JoinedServer> joined_servers;
-
-            LocalStorageSavedData() {}
-        };
-
-        typedef LocalStorageSavedData LocalStorageSavedData;
-
-        LocalStorageDataManager();
-        ~LocalStorageDataManager();
-
-        void SaveData();
-        void LoadData();
-
-        void InsertHostedServer(const uint16_t server_id);
-        HostedServer* GetServerById(const uint16_t server_id);
-
-        Database* GetDatabase();
-
-        LocalStorageSavedData& GetSavedData();
-    private:
-        LocalStorageSavedData saved_data;
-
-        Database* database;
     };
 }
