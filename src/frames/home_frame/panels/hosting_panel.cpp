@@ -92,7 +92,7 @@ void HostingPanel::DrawServers() {
 
     in_addr public_ip_address = utils::net::get_public_ip();
 
-        for (auto &server : *wxGetApp().GetHomeFrame()->GetHostingPanel()->GetHostedServers()) {
+    for (auto &server : *wxGetApp().GetHomeFrame()->GetHostingPanel()->GetHostedServers()) {
         uint16_t server_id = server.GetServerId();
 
         std::vector<uint8_t> invitation_data;

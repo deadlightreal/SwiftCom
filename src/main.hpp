@@ -8,6 +8,9 @@
 #include <sqlite3.h>
 #include "objects/objects.hpp"
 
+#define DEFAULT_TIMEOUT_CLIENT_CREATION 5000
+#define DEFAULT_TIMEOUT_REQUEST 5000
+
 // Request Types
 
 typedef enum {
@@ -35,6 +38,10 @@ typedef struct {
     uint32_t message_len;
     uint32_t channel_id;
 } SendMessageRequest;
+
+typedef struct {
+    char username[20];
+} JoinServerRequest;
 
 // Responses
 typedef struct {

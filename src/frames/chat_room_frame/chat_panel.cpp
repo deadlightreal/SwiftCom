@@ -122,7 +122,7 @@ void ChatRoomFrame::ChatPanel::SendMessage(const char* message, const uint32_t m
 
 void ChatRoomFrame::ChatPanel::InitializeConnection(const in_addr ip_address) {
     const char* ip_address_string = inet_ntoa(ip_address);
-    SwiftNetClientConnection* new_connection = swiftnet_create_client(ip_address_string, this->GetServerId());
+    SwiftNetClientConnection* new_connection = swiftnet_create_client(ip_address_string, this->GetServerId(), DEFAULT_TIMEOUT_CLIENT_CREATION);
     if (new_connection == nullptr) {
         fprintf(stderr, "Failed to connect to server\n");
         return;
@@ -145,7 +145,7 @@ void ChatRoomFrame::ChatPanel::LoadChannelData() {
     swiftnet_client_append_to_packet(&request_info, sizeof(request_info), &buffer);
     swiftnet_client_append_to_packet(&request, sizeof(request), &buffer);
 
-    SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(connection, &buffer);
+    SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(connection, &buffer, DEFAULT_TIMEOUT_REQUEST);
     if (packet_data == nullptr) {
         return;
     }

@@ -82,6 +82,12 @@ namespace objects {
         } ServerChatChannelRow;
 
         typedef struct {
+            uint32_t id;
+            char username[20];
+            in_addr ip_address;
+        } HostedServerUser;
+
+        typedef struct {
             const char* statement_name;
             const char* query;
         } Statement;
@@ -97,11 +103,12 @@ namespace objects {
         std::vector<JoinedServerRow>* SelectJoinedServers();
         std::vector<ServerChatChannelRow>* SelectServerChatChannels(const uint16_t server_id);
         std::vector<ChannelMessageRow>* SelectChannelMessages(const uint32_t channel_id);
+        std::vector<HostedServerUser>* SelectHostedServerUsers(const uint16_t server_id);
 
         uint32_t SelectUserId(const in_addr_t ip_address, const uint32_t server_id);
 
         int InsertHostedServer(const uint16_t server_id);
-        int InsertHostedServerUser(const uint16_t server_id, in_addr ip_address);
+        int InsertHostedServerUser(const uint16_t server_id, in_addr ip_address, const char* username);
         int InsertJoinedServer(const uint16_t server_id, in_addr ip_address);
         int InsertServerChatChannel(const char* name, const uint16_t server_id);
         int InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id);

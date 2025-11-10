@@ -5,21 +5,13 @@
 #include "swift_net.h"
 #include "../../../objects/objects.hpp"
 
-using namespace frames::home_frame::panels;
+using AddServerPopupMenu = frames::home_frame::panels::ServersPanel::AddServerPopupMenu;
 
-typedef enum {
-    EXISTS,
-    NO_RESPONSE,
-    FAILED_STATUS
-} ServerExistsResponse;
-
-static ServerExistsResponse server_exists = NO_RESPONSE;
-
-ServersPanel::AddServerPopupMenu::AddServerPopupMenu(wxWindow* parent, wxPoint pos) : wxDialog(parent, wxID_ANY, wxT("Add Server"), pos, wxSize(400, 200), wxSTAY_ON_TOP | wxDEFAULT_DIALOG_STYLE) {
+AddServerPopupMenu::AddServerPopupMenu(wxWindow* parent, wxPoint pos) : wxDialog(parent, wxID_ANY, wxT("Add Server"), pos, wxSize(400, 200), wxSTAY_ON_TOP | wxDEFAULT_DIALOG_STYLE) {
     wxTextCtrl* server_code_input = new wxTextCtrl(this, 0, "Server Code");
 
     widgets::Button* add_server_button = new widgets::Button(this, "Add Server", [this, server_code_input](wxMouseEvent& event) { 
-        ServersPanel::AddServerPopupMenu::AddServerReturnCode return_code = ServersPanel::AddServerPopupMenu::AddServer(server_code_input->GetValue());
+        AddServerPopupMenu::AddServerReturnCode return_code = AddServerPopupMenu::AddServer(server_code_input->GetValue());
 
         switch (return_code) {
             case INVALID_LENGTH:
@@ -39,64 +31,67 @@ ServersPanel::AddServerPopupMenu::AddServerPopupMenu(wxWindow* parent, wxPoint p
     SetSizerAndFit(sizer);
 }
 
-ServersPanel::AddServerPopupMenu::~AddServerPopupMenu() {
+AddServerPopupMenu::~AddServerPopupMenu() {
 
 }
 
-void ServersPanel::AddServerPopupMenu::RequestServerExistsConfirmation(const char* ip_address, const uint16_t server_id) {
-    SwiftNetClientConnection* client = swiftnet_create_client(ip_address, server_id);
+enum AddServerPopupMenu::RequestServerExistationStatus AddServerPopupMenu::RequestServerExistsConfirmation(const char* ip_address, const uint16_t server_id, const in_addr address) {
+    SwiftNetClientConnection* client = nullptr;
+
+    if (address.s_addr == utils::net::get_public_ip().s_addr) {
+        client = swiftnet_create_client(inet_ntoa(utils::net::get_private_ip()), server_id, DEFAULT_TIMEOUT_CLIENT_CREATION);
+    } else {
+        client = swiftnet_create_client(ip_address, server_id, DEFAULT_TIMEOUT_CLIENT_CREATION);
+    }
+
+    if (client == nullptr) {
+        return AddServerPopupMenu::RequestServerExistationStatus::NO_RESPONSE;
+    }
 
     const RequestInfo request_info = {.request_type = JOIN_SERVER};
 
-    SwiftNetPacketBuffer buffer = swiftnet_client_create_packet_buffer(sizeof(request_info));
-    
-    swiftnet_client_append_to_packet(&request_info, sizeof(RequestInfo), &buffer);
+    const JoinServerRequest request = {
+    };
 
-    SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(client, &buffer);
+    SwiftNetPacketBuffer buffer = swiftnet_client_create_packet_buffer(sizeof(request_info) + sizeof(request));
+    
+    swiftnet_client_append_to_packet(&request_info, sizeof(request_info), &buffer);
+    swiftnet_client_append_to_packet(&request, sizeof(request), &buffer);
+
+    SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(client, &buffer, DEFAULT_TIMEOUT_REQUEST);
+    if (packet_data == nullptr) {
+        return AddServerPopupMenu::RequestServerExistationStatus::NO_RESPONSE;
+    }
 
     const RequestInfo* const request_info_received = (RequestInfo*)swiftnet_client_read_packet(packet_data, sizeof(RequestInfo));
     if (request_info_received->request_type != RequestType::JOIN_SERVER) {
-        return;
+        return AddServerPopupMenu::RequestServerExistationStatus::UNKNOWN_RESPONSE;
     }
     
     const JoinServerResponse* const response = (JoinServerResponse*)swiftnet_client_read_packet(packet_data, sizeof(JoinServerResponse));
 
+    in_addr parsed_ip_address;
+    inet_pton(AF_INET, ip_address, &parsed_ip_address);
+
     if(response->status == RequestStatus::SUCCESS) {
-        server_exists = ServerExistsResponse::EXISTS;
+        wxGetApp().GetDatabase()->InsertJoinedServer(server_id, parsed_ip_address);
+
+        ServersPanel* const servers_panel = wxGetApp().GetHomeFrame()->GetServersPanel();
+
+        servers_panel->GetJoinedServers()->push_back(objects::JoinedServer(server_id, parsed_ip_address));
+        
+        servers_panel->DrawServers();
     } else {
-        server_exists = ServerExistsResponse::FAILED_STATUS;
     }
 
     swiftnet_client_destroy_packet_buffer(&buffer);
 
-    in_addr parsed_ip_address;
-    inet_pton(AF_INET, ip_address, &parsed_ip_address);
-
-    switch (server_exists) {
-        case EXISTS:
-        {
-            wxGetApp().GetDatabase()->InsertJoinedServer(server_id, parsed_ip_address);
-
-            ServersPanel* const servers_panel = wxGetApp().GetHomeFrame()->GetServersPanel();
-
-            servers_panel->GetJoinedServers()->push_back(objects::JoinedServer(server_id, parsed_ip_address));
-            
-            servers_panel->DrawServers();
-
-            break;
-        }
-        case FAILED_STATUS:
-            break;
-        case NO_RESPONSE:
-            break;
-    }
-
-    server_exists = NO_RESPONSE;
-
     swiftnet_client_cleanup(client);
+
+    return AddServerPopupMenu::RequestServerExistationStatus::SUCCESSFULLY_CONNECTED;
 }
 
-ServersPanel::AddServerPopupMenu::AddServerReturnCode ServersPanel::AddServerPopupMenu::AddServer(wxString input) {
+AddServerPopupMenu::AddServerReturnCode AddServerPopupMenu::AddServer(wxString input) {
     in_addr server_ip_address;
     uint16_t server_id;
 
@@ -107,13 +102,9 @@ ServersPanel::AddServerPopupMenu::AddServerReturnCode ServersPanel::AddServerPop
 
     in_addr public_ip_local = utils::net::get_public_ip();
 
-    if (public_ip_local.s_addr == server_ip_address.s_addr) {
-        server_ip_address = utils::net::get_private_ip();
-    }
-
     const char* server_ip_string = inet_ntoa(server_ip_address);
 
-    this->RequestServerExistsConfirmation(server_ip_string, server_id);
+    this->RequestServerExistsConfirmation(server_ip_string, server_id, server_ip_address);
 
     return SUCCESS;
 }

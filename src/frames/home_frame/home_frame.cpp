@@ -1,5 +1,7 @@
 #include <iostream>
 #include <ostream>
+#include <wx/event.h>
+#include <wx/panel.h>
 #include <wx/wx.h>
 #include "../../widgets/widgets.hpp"
 #include "panels/panels.hpp"
@@ -8,13 +10,11 @@
 using namespace frames;
 
 HomeFrame::HomeFrame() : wxFrame(nullptr, wxID_ANY, "Home Frame", wxDefaultPosition, wxSize(800, 600)) {
-    timer.SetOwner(this);
-    Bind(wxEVT_TIMER, &HomeFrame::Frame, this);
-    timer.Start(1000 / 60);
-
     wxPanel* mainPanel = new wxPanel(this);
 
-    this->menu_bar = new widgets::MenuBar(mainPanel, {"Servers", "Hosting", "Settings"});
+    this->menu_bar = new widgets::MenuBar(mainPanel, {"Servers", "Hosting"}, wxHORIZONTAL, [this](){
+        this->SelectedMenuChange();
+    });
 
     this->hosting_panel = new home_frame::panels::HostingPanel(mainPanel);
     this->servers_panel = new home_frame::panels::ServersPanel(mainPanel);
@@ -24,7 +24,12 @@ HomeFrame::HomeFrame() : wxFrame(nullptr, wxID_ANY, "Home Frame", wxDefaultPosit
     vSizer->Add(hosting_panel, 1, wxEXPAND);
     vSizer->Add(servers_panel, 1, wxEXPAND);
 
+    this->hosting_panel->Hide();
+    this->servers_panel->Hide();
+
     mainPanel->SetSizer(vSizer);
+
+    this->SelectedMenuChange();
 }
 
 HomeFrame::~HomeFrame() {
@@ -32,24 +37,19 @@ HomeFrame::~HomeFrame() {
     delete this->hosting_panel;
 }
 
-void HomeFrame::Frame(wxTimerEvent& event) {
-    switch(menu_bar->GetCurrentIndex()) {
-        case 0:
-            hosting_panel->Hide();
-            servers_panel->Show();
-
-            break;
-        case 1:
-            hosting_panel->Show();
-            servers_panel->Hide();
-
-            break;
-        case 2:
-            hosting_panel->Hide();
-            servers_panel->Hide();
-
-            break;
+void HomeFrame::SelectedMenuChange() {
+    if (this->active_panel != nullptr) {
+        this->active_panel->Hide();
     }
+
+    static wxPanel* const panels[] = {
+        this->servers_panel,
+        this->hosting_panel
+    };
+
+    this->active_panel = panels[this->menu_bar->GetCurrentIndex()];
+
+    this->active_panel->Show();
 
     Layout();
     Refresh();

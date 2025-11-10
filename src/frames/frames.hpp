@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <wx/event.h>
+#include <wx/panel.h>
 #include <wx/wx.h>
 #include "../widgets/widgets.hpp"
 #include "home_frame/panels/panels.hpp"
@@ -14,28 +16,49 @@ namespace frames {
         HomeFrame();
         ~HomeFrame();
         
-        void Frame(wxTimerEvent& event);
+        void SelectedMenuChange();
 
         frames::home_frame::panels::HostingPanel* GetHostingPanel();
         frames::home_frame::panels::ServersPanel* GetServersPanel();
     private:
         frames::home_frame::panels::HostingPanel* hosting_panel;
         frames::home_frame::panels::ServersPanel* servers_panel;
+
+        wxPanel* active_panel = nullptr;
         
         widgets::MenuBar* menu_bar;
         
         uint8_t current_menu;
-        
-        wxTimer timer;
     };
 
     class ServerSettingsFrame : public wxFrame {
     public:
+        class AdminListPanel : public wxPanel {
+        public:
+            AdminListPanel(wxPanel* parent, const uint16_t server_id);
+            ~AdminListPanel();
+
+            void RenderUserList();
+        private:
+            wxPanel* user_list_panel;
+
+            uint16_t server_id;
+        };
+
         ServerSettingsFrame(const uint16_t server_id, const in_addr_t ip_address);
         ~ServerSettingsFrame();
+
+        void SelectedMenuChange();
     private:
         uint16_t server_id;
         in_addr_t ip_address;
+        uint32_t menu_selected_index;
+
+        wxPanel* active_menu = nullptr;
+
+        wxPanel* admin_list_panel;
+
+        widgets::MenuBar* menu_bar;
     };
 
     class ChatRoomFrame : public wxFrame {

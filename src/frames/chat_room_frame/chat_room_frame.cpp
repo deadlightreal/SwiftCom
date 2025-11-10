@@ -27,11 +27,9 @@ ChatRoomFrame::ChatRoomFrame(const in_addr ip_address, const uint16_t server_id)
     main_panel->SetSizer(main_sizer);
 
     // Handle loading server
-    in_addr public_ip = utils::net::get_public_ip();
-
     const char* string_ip = inet_ntoa(ip_address);
 
-    SwiftNetClientConnection* const connection = swiftnet_create_client(string_ip, server_id);
+    SwiftNetClientConnection* const connection = swiftnet_create_client(string_ip, server_id, DEFAULT_TIMEOUT_CLIENT_CREATION);
     if (connection == NULL) {
         // Handle server not started, or any error
         return;
@@ -123,7 +121,7 @@ void ChatRoomFrame::LoadServerInformation() {
 
     swiftnet_client_append_to_packet(&request_info, sizeof(request_info), &buffer);
 
-    SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(connection, &buffer);
+    SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(connection, &buffer, DEFAULT_TIMEOUT_REQUEST);
     if (packet_data == NULL) {
         return;
     }

@@ -2,7 +2,7 @@
 
 using namespace widgets;
 
-MenuBarButton::MenuBarButton(wxWindow* parent, const wxString& label, const uint32_t index, uint32_t* const current_index) : wxControl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE), label(label), index(index), current_index(current_index) {
+MenuBarButton::MenuBarButton(wxWindow* parent, const wxString& label, const uint32_t index, uint32_t* const current_index, std::function<void()> click_callback) : wxControl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE), label(label), click_callback(click_callback), index(index), current_index(current_index) {
     SetBackgroundStyle(wxBG_STYLE_PAINT);
     Bind(wxEVT_PAINT, &MenuBarButton::OnPaint, this);
     Bind(wxEVT_LEFT_DOWN, &MenuBarButton::OnClick, this);
@@ -31,6 +31,8 @@ void MenuBarButton::OnPaint(wxPaintEvent&) {
     dc.DrawText(label, (size.GetWidth() - w) / 2, (size.GetHeight() - h) / 2);
 }
 
-void MenuBarButton::OnClick(wxMouseEvent&) {
+void MenuBarButton::OnClick(wxMouseEvent& event) {
     *current_index = index;
+
+    this->click_callback();
 }

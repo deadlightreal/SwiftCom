@@ -63,7 +63,9 @@ static void HandleJoinServerRequest(HostedServer* server, SwiftNetServerPacketDa
     const in_addr ip_address = packet_data->metadata.sender.sender_address.sin_addr;
     const uint16_t server_id = server->GetServerId();
 
-    int result = wxGetApp().GetDatabase()->InsertHostedServerUser(server_id, ip_address);
+    const char* username = (const char*)swiftnet_server_read_packet(packet_data, 20);
+
+    int result = wxGetApp().GetDatabase()->InsertHostedServerUser(server_id, ip_address, username);
     if (result != 0) {
         const RequestInfo request_info = {
             .request_type = JOIN_SERVER
@@ -78,7 +80,7 @@ static void HandleJoinServerRequest(HostedServer* server, SwiftNetServerPacketDa
         swiftnet_server_append_to_packet(&request_info, sizeof(request_info), &buffer);
         swiftnet_server_append_to_packet(&response, sizeof(response), &buffer);
 
-        swiftnet_server_send_packet(server->GetServer(), &buffer, packet_data->metadata.sender);
+        swiftnet_server_make_response(server->GetServer(), packet_data, &buffer);
 
         swiftnet_server_destroy_packet_buffer(&buffer);
     }

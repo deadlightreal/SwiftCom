@@ -1,4 +1,5 @@
 #include "objects.hpp"
+#include <cstring>
 #include <sqlite3.h>
 #include <cstdint>
 #include <cstdlib>
@@ -35,7 +36,7 @@ void Database::OpenDatabase() {
 
 void Database::PrepareStatements() {
     const Statement statements[] = {
-        (Statement){.statement_name = "insert_hosted_server_user", .query = "INSERT INTO hosted_server_users (ip_address, server_id) VALUES ($1, $2);"},
+        (Statement){.statement_name = "insert_hosted_server_user", .query = "INSERT INTO hosted_server_users (ip_address, server_id, username) VALUES ($1, $2, $3);"},
         (Statement){.statement_name = "insert_joined_server", .query = "INSERT INTO joined_servers (ip_address, server_id) VALUES ($1, $2);"},
         (Statement){.statement_name = "insert_hosted_server", .query = "INSERT INTO hosted_servers (id) VALUES ($1);"},
         (Statement){.statement_name = "insert_server_chat_channel", .query = "INSERT INTO server_chat_channels (name, hosted_server_id) VALUES ($1, $2);"},
@@ -43,6 +44,7 @@ void Database::PrepareStatements() {
         (Statement){.statement_name = "select_hosted_servers", .query = "SELECT id FROM hosted_servers;"},
         (Statement){.statement_name = "select_joined_servers", .query = "SELECT ip_address, server_id FROM joined_servers;"},
         (Statement){.statement_name = "select_user_id", .query = "SELECT id FROM hosted_server_users WHERE ip_address = $1 AND server_id = $2;"},
+        (Statement){.statement_name = "select_hosted_server_users", .query = "SELECT id, username, ip_address FROM hosted_server_users WHERE server_id = $1;"},
         (Statement){.statement_name = "select_server_chat_channels", .query = "SELECT id, name FROM server_chat_channels WHERE hosted_server_id = $1;"},
         (Statement){.statement_name = "select_channel_messages", .query = "SELECT id, message, length(message), sender_id FROM channel_messages WHERE channel_id = $1;"},
     };
@@ -62,7 +64,7 @@ void Database::PrepareStatements() {
 
 void Database::InitializeDatabaseTables() {
     const char* queries[] = {
-        "CREATE TABLE IF NOT EXISTS hosted_server_users (id INTEGER PRIMARY KEY AUTOINCREMENT, ip_address INTEGER UNIQUE NOT NULL, server_id INTEGER NOT NULL);",
+        "CREATE TABLE IF NOT EXISTS hosted_server_users (id INTEGER PRIMARY KEY AUTOINCREMENT, ip_address INTEGER UNIQUE NOT NULL, server_id INTEGER NOT NULL, username VARCHAR(20) NOT NULL);",
         "CREATE TABLE IF NOT EXISTS hosted_servers (id INTEGER PRIMARY KEY NOT NULL);",
         "CREATE TABLE IF NOT EXISTS joined_servers (id INTEGER PRIMARY KEY AUTOINCREMENT, ip_address INTEGER NOT NULL, server_id INTEGER NOT NULL);",
         "CREATE TABLE IF NOT EXISTS server_chat_channels (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, hosted_server_id INTEGER NOT NULL);"
@@ -78,11 +80,12 @@ void Database::InitializeDatabaseTables() {
     }
 }
 
-int Database::InsertHostedServerUser(const uint16_t server_id, in_addr ip_address) {
+int Database::InsertHostedServerUser(const uint16_t server_id, in_addr ip_address, const char* username) {
     sqlite3_stmt* stmt = this->GetStatement("insert_hosted_server_user");
 
     sqlite3_bind_int(stmt, 1, ip_address.s_addr);
     sqlite3_bind_int(stmt, 2, server_id);
+    sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT);
 
     int result = sqlite3_step(stmt);
     if (result != SQLITE_DONE) {
@@ -161,6 +164,31 @@ int Database::InsertHostedServer(const uint16_t server_id) {
     sqlite3_reset(stmt);
 
     return 0;
+}
+
+std::vector<Database::HostedServerUser>* Database::SelectHostedServerUsers(const uint16_t server_id) {
+    sqlite3_stmt* stmt = this->GetStatement("select_hosted_server_users");
+
+    sqlite3_bind_int(stmt, 1, server_id);
+
+    std::vector<Database::HostedServerUser>* result = new std::vector<Database::HostedServerUser>();
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        Database::HostedServerUser new_row = {
+            .id = (uint16_t)sqlite3_column_int(stmt, 0),
+            .ip_address = (in_addr_t)sqlite3_column_int(stmt, 2)
+        };
+
+        const char* username = (const char*)sqlite3_column_text(stmt, 1);
+
+        memcpy(&new_row.username, username, strlen(username) + 1);
+
+        result->push_back(new_row);
+    }
+
+    sqlite3_reset(stmt);
+
+    return result;
 }
 
 std::vector<Database::JoinedServerRow>* Database::SelectJoinedServers() {

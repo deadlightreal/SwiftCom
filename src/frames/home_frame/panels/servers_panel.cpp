@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
@@ -71,7 +72,22 @@ void ServersPanel::DrawServers() {
         server_panel->SetMaxSize(wxSize(-1, 30));
 
         widgets::Button* start_server_button = new widgets::Button(server_panel, "Enter Server", [this, &server](wxMouseEvent& event){
-            frames::ChatRoomFrame* chat_room_frame = new frames::ChatRoomFrame(server.GetServerIpAddress(), server.GetServerId());
+            frames::ChatRoomFrame* chat_room_frame = nullptr;
+
+            char buf[100];
+
+            in_addr ip = server.GetServerIpAddress();
+
+            inet_aton(buf, &ip);
+
+            printf("server ip: %s\n", buf);
+
+            if (server.GetServerIpAddress().s_addr == utils::net::get_public_ip().s_addr) {
+                chat_room_frame = new frames::ChatRoomFrame(utils::net::get_private_ip(), server.GetServerId());
+            } else {
+                chat_room_frame = new frames::ChatRoomFrame(server.GetServerIpAddress(), server.GetServerId());
+            }
+            
             chat_room_frame->Show(true);
 
             wxGetApp().AddChatRoomFrame(chat_room_frame);

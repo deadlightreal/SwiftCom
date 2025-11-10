@@ -35,10 +35,16 @@ namespace frames::home_frame::panels {
                 INVALID_LENGTH
             };
 
+            enum RequestServerExistationStatus {
+                SUCCESSFULLY_CONNECTED,
+                NO_RESPONSE,
+                UNKNOWN_RESPONSE
+            };
+
             AddServerPopupMenu(wxWindow* parent, wxPoint pos);
             ~AddServerPopupMenu();
 
-            void RequestServerExistsConfirmation(const char* ip_address, const uint16_t server_id);
+            enum RequestServerExistationStatus RequestServerExistsConfirmation(const char* ip_address, const uint16_t server_id, const in_addr address);
 
             AddServerReturnCode AddServer(wxString input);
         };
