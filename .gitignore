@@ -1,11 +1,10 @@
 .DS_Store
 
-/build/Makefile
-/build/CMakeCache.txt
-/build/cmake_install.cmake
-/build/CMakeFiles/
-/build/swift_com
-/build/output/
+/build/*
+!/build/compile.sh
+!/build/CMakeLists.txt
+.cache/*
+/src/.cache/*
 
 *.o
 *.dSYM/
