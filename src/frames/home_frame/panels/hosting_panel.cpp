@@ -69,7 +69,7 @@ HostingPanel::HostingPanel(wxPanel* parent_panel) : wxPanel(parent_panel) {
     this->SetSizer(main_sizer_margin);
 
     // Load hosted servers
-    std::vector<objects::Database::HostedServerRow>* hosted_servers = wxGetApp().GetDatabase()->SelectHostedServers();
+    std::vector<objects::Database::HostedServerRow>* hosted_servers = wxGetApp().GetDatabase()->SelectHostedServers(std::nullopt);
 
     auto stored_hosted_servers = this->GetHostedServers();
 

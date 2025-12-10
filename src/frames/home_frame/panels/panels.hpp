@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <wx/timer.h>
 #include <wx/wx.h>
 #include "../../../objects/objects.hpp"
 #include <vector>
@@ -44,14 +45,15 @@ namespace frames::home_frame::panels {
             AddServerPopupMenu(wxWindow* parent, wxPoint pos);
             ~AddServerPopupMenu();
 
-            enum RequestServerExistationStatus RequestServerExistsConfirmation(const char* ip_address, const uint16_t server_id, const in_addr address);
+            enum RequestServerExistationStatus RequestServerExistsConfirmation(const char* ip_address, const uint16_t server_id, const in_addr address, const char* username);
 
-            AddServerReturnCode AddServer(wxString input);
+            AddServerReturnCode AddServer(wxString server_code_input, wxString username_input);
         };
 
         ServersPanel(wxPanel* parent_panel);
         ~ServersPanel();
 
+        void RefreshServerInfo();
         void DrawServers();
 
         void OpenAddServerPopupMenu(wxMouseEvent& event, wxWindow* parent);
@@ -61,5 +63,7 @@ namespace frames::home_frame::panels {
         std::vector<objects::JoinedServer> joined_servers;
 
         wxPanel* joined_servers_panel;
+
+        wxTimer* refresh_servers_timer;
     };
 }

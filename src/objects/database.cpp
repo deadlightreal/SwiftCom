@@ -1,6 +1,7 @@
 #include "objects.hpp"
 #include "../main.hpp"
 #include <cstring>
+#include <optional>
 #include <sqlite3.h>
 #include <cstdint>
 #include <cstdlib>
@@ -46,14 +47,12 @@ void Database::PrepareStatements() {
         (Statement){.statement_name = "insert_hosted_server", .query = "INSERT INTO hosted_servers (id) VALUES ($1);"},
         (Statement){.statement_name = "insert_server_chat_channel", .query = "INSERT INTO server_chat_channels (name, hosted_server_id) VALUES ($1, $2);"},
         (Statement){.statement_name = "insert_channel_message", .query = "INSERT INTO channel_messages (message, channel_id, sender_id) VALUES ($1, $2, $3);"},
-        (Statement){.statement_name = "update_user_type_by_username", .query = "UPDATE hosted_server_users SET user_type = $1 WHERE server_id = $2 AND username = $3;"},
-        (Statement){.statement_name = "select_hosted_servers", .query = "SELECT id FROM hosted_servers;"},
-        (Statement){.statement_name = "select_joined_servers", .query = "SELECT ip_address, server_id FROM joined_servers;"},
-        (Statement){.statement_name = "select_user_id", .query = "SELECT id FROM hosted_server_users WHERE ip_address = $1 AND server_id = $2;"},
-        (Statement){.statement_name = "select_hosted_server_users", .query = "SELECT id, username, ip_address FROM hosted_server_users WHERE server_id = $1;"},
-        (Statement){.statement_name = "select_hosted_server_users_by_user_type", .query = "SELECT id, username, ip_address FROM hosted_server_users WHERE server_id = $1 AND user_type = $2;"},
-        (Statement){.statement_name = "select_server_chat_channels", .query = "SELECT id, name FROM server_chat_channels WHERE hosted_server_id = $1;"},
-        (Statement){.statement_name = "select_channel_messages", .query = "SELECT id, message, length(message), sender_id FROM channel_messages WHERE channel_id = $1;"},
+        (Statement){.statement_name = "update_hosted_server_users", .query = "UPDATE hosted_server_users SET username = COALESCE($1, username), user_type = COALESCE($2, user_type) WHERE ($3 IS NULL OR id = $3) AND ($4 IS NULL OR ip_address = $4) AND ($5 IS NULL OR server_id = $5) OR ($6 IS NULL OR username = $6) OR ($7 IS NULL OR user_type = $7);"},
+        (Statement){.statement_name = "select_hosted_servers", .query = "SELECT id FROM hosted_servers WHERE ($1 IS NULL OR id = $1);"},
+        (Statement){.statement_name = "select_joined_servers", .query = "SELECT id, ip_address, server_id FROM joined_servers WHERE ($1 IS NULL OR id = $1) AND ($2 IS NULL OR ip_address = $2) AND ($3 IS NULL OR server_id = $3);"},
+        (Statement){.statement_name = "select_hosted_server_users", .query = "SELECT id, username, ip_address, user_type FROM hosted_server_users WHERE ($1 IS NULL OR server_id = $1) AND ($2 IS NULL OR user_type = $2) AND ($3 IS NULL OR username = $3) AND ($4 IS NULL OR ip_address = $4);"},
+        (Statement){.statement_name = "select_server_chat_channels", .query = "SELECT id, name, hosted_server_id FROM server_chat_channels WHERE ($1 IS NULL OR $1 = id) AND ($2 IS NULL OR $2 = name) AND ($3 IS NULL OR $3 = hosted_server_id);"},
+        (Statement){.statement_name = "select_channel_messages", .query = "SELECT id, message, length(message), sender_id, channel_id FROM channel_messages WHERE ($1 IS NULL OR id = $1) AND ($2 IS NULL OR message = $2) AND ($3 IS NULL OR sender_id = $3) AND ($4 IS NULL OR channel_id = $4);"},
     };
 
     for(const auto& statement : statements) {
@@ -173,16 +172,20 @@ int Database::InsertHostedServer(const uint16_t server_id) {
     return 0;
 }
 
-int Database::UpdateUserTypeByUsername(const char* username, const uint16_t server_id, const UserType user_type) {
-    sqlite3_stmt* stmt = this->GetStatement("update_user_type_by_username");
+int Database::UpdateHostedServerUsers(const char* new_username, const std::optional<Database::UserType> new_user_type, const std::optional<uint32_t> id, const std::optional<in_addr_t> ip_address, const std::optional<uint16_t> server_id, const char* username, const std::optional<Database::UserType> user_type) {
+    sqlite3_stmt* stmt = this->GetStatement("update_hosted_server_users");
 
-    sqlite3_bind_int(stmt, 1, user_type);
-    sqlite3_bind_int(stmt, 2, server_id);
-    sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT);
+    new_username != nullptr ? sqlite3_bind_text(stmt, 1, new_username, -1, SQLITE_TRANSIENT) : sqlite3_bind_null(stmt, 1);
+    new_user_type.has_value() ? sqlite3_bind_int(stmt, 2, new_user_type.value()) : sqlite3_bind_null(stmt, 2);
+    id.has_value() ? sqlite3_bind_int(stmt, 3, id.value()) : sqlite3_bind_null(stmt, 3);
+    ip_address.has_value() ? sqlite3_bind_int(stmt, 4, ip_address.value()) : sqlite3_bind_null(stmt, 4);
+    server_id.has_value() ? sqlite3_bind_int(stmt, 5, server_id.value()) : sqlite3_bind_null(stmt, 5);
+    username != nullptr ? sqlite3_bind_text(stmt, 6, username, -1, SQLITE_TRANSIENT) : sqlite3_bind_null(stmt, 6);
+    user_type.has_value() ? sqlite3_bind_int(stmt, 7, user_type.value()) : sqlite3_bind_null(stmt, 7);
 
     int result = sqlite3_step(stmt);
     if (result != SQLITE_DONE) {
-        std::cerr << "Failed to insert insert_hosted_server" << std::endl;
+        std::cerr << "Failed to update hosted_server_users" << std::endl;
         return -1;
     }
 
@@ -191,17 +194,21 @@ int Database::UpdateUserTypeByUsername(const char* username, const uint16_t serv
     return 0;
 } 
 
-std::vector<Database::HostedServerUser>* Database::SelectHostedServerUsers(const uint16_t server_id) {
+std::vector<Database::HostedServerUser>* Database::SelectHostedServerUsers(const std::optional<uint16_t> server_id, const std::optional<Database::UserType> user_type, const char* username, const std::optional<in_addr_t> ip_address) {
     sqlite3_stmt* stmt = this->GetStatement("select_hosted_server_users");
 
-    sqlite3_bind_int(stmt, 1, server_id);
+    server_id.has_value() ? sqlite3_bind_int(stmt, 1, server_id.value()) : sqlite3_bind_null(stmt, 1);
+    user_type.has_value() ? sqlite3_bind_int(stmt, 2, user_type.value()) : sqlite3_bind_null(stmt, 2);
+    username != nullptr ? sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT) : sqlite3_bind_null(stmt, 3);
+    ip_address.has_value() ? sqlite3_bind_int(stmt, 4, ip_address.value()) : sqlite3_bind_null(stmt, 4);
 
     std::vector<Database::HostedServerUser>* result = new std::vector<Database::HostedServerUser>();
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         Database::HostedServerUser new_row = {
             .id = (uint16_t)sqlite3_column_int(stmt, 0),
-            .ip_address = (in_addr_t)sqlite3_column_int(stmt, 2)
+            .ip_address = (in_addr_t)sqlite3_column_int(stmt, 2),
+            .user_type = (Database::UserType)sqlite3_column_int(stmt, 3)
         };
 
         const char* username = (const char*)sqlite3_column_text(stmt, 1);
@@ -216,40 +223,19 @@ std::vector<Database::HostedServerUser>* Database::SelectHostedServerUsers(const
     return result;
 }
 
-std::vector<Database::HostedServerUser>* Database::SelectHostedServerUsersByUserType(const uint16_t server_id, const Database::UserType user_type) {
-    sqlite3_stmt* stmt = this->GetStatement("select_hosted_server_users_by_user_type");
-
-    sqlite3_bind_int(stmt, 1, server_id);
-    sqlite3_bind_int(stmt, 2, user_type);
-
-    std::vector<Database::HostedServerUser>* result = new std::vector<Database::HostedServerUser>();
-
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        Database::HostedServerUser new_row = {
-            .id = (uint16_t)sqlite3_column_int(stmt, 0),
-            .ip_address = (in_addr_t)sqlite3_column_int(stmt, 2)
-        };
-
-        const char* username = (const char*)sqlite3_column_text(stmt, 1);
-
-        memcpy(&new_row.username, username, strlen(username) + 1);
-
-        result->push_back(new_row);
-    }
-
-    sqlite3_reset(stmt);
-
-    return result;
-}
-
-std::vector<Database::JoinedServerRow>* Database::SelectJoinedServers() {
+std::vector<Database::JoinedServerRow>* Database::SelectJoinedServers(const std::optional<uint32_t> id, const std::optional<in_addr_t> ip_address, const std::optional<uint16_t> server_id) {
     sqlite3_stmt* stmt = this->GetStatement("select_joined_servers");
+
+    id.has_value() ? sqlite3_bind_int(stmt, 1, id.value()) : sqlite3_bind_null(stmt, 1);
+    ip_address.has_value() ? sqlite3_bind_int(stmt, 2, ip_address.value()) : sqlite3_bind_null(stmt, 2);
+    server_id.has_value() ? sqlite3_bind_int(stmt, 3, server_id.value()) : sqlite3_bind_null(stmt, 3);
 
     std::vector<Database::JoinedServerRow>* result = new std::vector<Database::JoinedServerRow>();
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        in_addr_t server_ip_address = sqlite3_column_int(stmt, 0);
-        uint16_t server_id = sqlite3_column_int(stmt, 1);
+        const uint32_t id = sqlite3_column_int(stmt, 0);
+        const in_addr_t server_ip_address = sqlite3_column_int(stmt, 1);
+        const uint16_t server_id = sqlite3_column_int(stmt, 2);
 
         result->push_back((Database::JoinedServerRow){.server_id = server_id, .ip_address = server_ip_address});
     }
@@ -259,43 +245,29 @@ std::vector<Database::JoinedServerRow>* Database::SelectJoinedServers() {
     return result;
 }
 
-uint32_t Database::SelectUserId(const in_addr_t ip_address, const uint32_t server_id) {
-    sqlite3_stmt* stmt = this->GetStatement("select_joined_servers");
-
-    sqlite3_bind_int(stmt, 1, ip_address);
-    sqlite3_bind_int(stmt, 2, server_id);
-
-    std::vector<Database::ServerChatChannelRow>* result = new std::vector<Database::ServerChatChannelRow>();
-
-    if(sqlite3_step(stmt) == SQLITE_ROW) {
-        uint32_t id = sqlite3_column_int(stmt, 0);
-
-        return id;
-    }
-
-    sqlite3_reset(stmt);
-
-    return 0;
-}
-
-std::vector<Database::ChannelMessageRow>* Database::SelectChannelMessages(const uint32_t channel_id) {
+std::vector<Database::ChannelMessageRow>* Database::SelectChannelMessages(const std::optional<uint32_t> id, const char* message, const std::optional<uint32_t> sender_id, const std::optional<uint32_t> channel_id) {
     sqlite3_stmt* stmt = this->GetStatement("select_channel_messages");
 
-    sqlite3_bind_int(stmt, 1, channel_id);
+    id.has_value() ? sqlite3_bind_int(stmt, 1, id.value()) : sqlite3_bind_null(stmt, 1);
+    message != nullptr ? sqlite3_bind_text(stmt, 2, message, -1, SQLITE_TRANSIENT) : sqlite3_bind_null(stmt, 2);
+    sender_id.has_value() ? sqlite3_bind_int(stmt, 3, sender_id.value()) : sqlite3_bind_null(stmt, 3);
+    channel_id.has_value() ? sqlite3_bind_int(stmt, 4, channel_id.value()) : sqlite3_bind_null(stmt, 4);
 
     std::vector<Database::ChannelMessageRow>* result = new std::vector<Database::ChannelMessageRow>();
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        uint32_t id = sqlite3_column_int(stmt, 0);
-        const char* message = (const char*)sqlite3_column_text(stmt, 1);
-        uint32_t message_length = sqlite3_column_int(stmt, 2);
-        uint32_t sender_id = sqlite3_column_int(stmt, 3);
+        const uint32_t id = sqlite3_column_int(stmt, 0);
+        const char* const message = (const char*)sqlite3_column_text(stmt, 1);
+        const uint32_t message_length = sqlite3_column_int(stmt, 2);
+        const uint32_t sender_id = sqlite3_column_int(stmt, 3);
+        const uint32_t channel_id = sqlite3_column_int(stmt, 4);
 
         result->push_back((Database::ChannelMessageRow){
             .message = message,
             .message_length = message_length,
             .id = id,
             .sender_id = sender_id,
+            .channel_id = channel_id
         });
     }
 
@@ -304,28 +276,27 @@ std::vector<Database::ChannelMessageRow>* Database::SelectChannelMessages(const 
     return result;
 }
 
-std::vector<Database::ServerChatChannelRow>* Database::SelectServerChatChannels(const uint16_t server_id) {
+std::vector<Database::ServerChatChannelRow>* Database::SelectServerChatChannels(const std::optional<uint32_t> id, const char* name, const std::optional<uint16_t> server_id) {
     sqlite3_stmt* stmt = this->GetStatement("select_server_chat_channels");
 
-    sqlite3_bind_int(stmt, 1, server_id);
+    id.has_value() ? sqlite3_bind_int(stmt, 1, id.value()) : sqlite3_bind_null(stmt, 1);
+    name != nullptr ? sqlite3_bind_text(stmt, 2, name, -1, SQLITE_TRANSIENT) : sqlite3_bind_null(stmt, 2);
+    server_id.has_value() ? sqlite3_bind_int(stmt, 3, server_id.value()) : sqlite3_bind_null(stmt, 3);
 
     std::vector<Database::ServerChatChannelRow>* result = new std::vector<Database::ServerChatChannelRow>();
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        uint16_t id = sqlite3_column_int(stmt, 0);
+        const uint32_t got_id = sqlite3_column_int(stmt, 0);
+        const uint16_t got_hosted_server_id = sqlite3_column_int(stmt, 2);
 
         auto row = (Database::ServerChatChannelRow){
-            .id = id,
+            .id = got_id,
+            .hosted_server_id = got_hosted_server_id
         };
 
-        const unsigned char* text = sqlite3_column_text(stmt, 1);
+        const char* got_name = (const char*)sqlite3_column_text(stmt, 1);
 
-        if (text != NULL) {
-            strncpy(row.name, (const char*)text, sizeof(row.name) - 1);
-            row.name[sizeof(row.name) - 1] = '\0';
-        } else {
-            row.name[0] = '\0';
-        }
+        memcpy(row.name, got_name, strlen(got_name) + 1);
 
         result->push_back(row);
     }
@@ -335,10 +306,12 @@ std::vector<Database::ServerChatChannelRow>* Database::SelectServerChatChannels(
     return result;
 }
 
-std::vector<Database::HostedServerRow>* Database::SelectHostedServers() {
+std::vector<Database::HostedServerRow>* Database::SelectHostedServers(const std::optional<uint16_t> server_id) {
     sqlite3_stmt* stmt = this->GetStatement("select_hosted_servers");
 
     std::vector<Database::HostedServerRow>* result = new std::vector<Database::HostedServerRow>();
+
+    server_id.has_value() ? sqlite3_bind_int(stmt, 1, server_id.value()) : sqlite3_bind_null(stmt, 1);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         uint16_t id = sqlite3_column_int(stmt, 0);

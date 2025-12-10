@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <netinet/in.h>
+#include <optional>
 #include <wx/event.h>
 #include <wx/osx/stattext.h>
 #include <wx/panel.h>
@@ -41,7 +42,7 @@ void AdminListPanel::RenderAdminList() {
 
     auto list_sizer = this->admin_list_panel->GetSizer();
 
-    auto users = wxGetApp().GetDatabase()->SelectHostedServerUsersByUserType(server_id, objects::Database::UserType::Admin);
+    auto users = wxGetApp().GetDatabase()->SelectHostedServerUsers(server_id, objects::Database::UserType::Admin, nullptr, std::nullopt);
 
     for (auto &user : *users) {
         auto user_panel = new widgets::StyledPanel(this->admin_list_panel);
@@ -78,7 +79,7 @@ void AdminListPanel::RenderMemberList() {
 
     auto list_sizer = this->member_list_panel->GetSizer();
 
-    auto users = wxGetApp().GetDatabase()->SelectHostedServerUsersByUserType(server_id, objects::Database::UserType::Member);
+    auto users = wxGetApp().GetDatabase()->SelectHostedServerUsers(server_id, objects::Database::UserType::Member, nullptr, std::nullopt);
 
     for (auto &user : *users) {
         auto user_panel = new widgets::StyledPanel(this->member_list_panel);
@@ -111,14 +112,20 @@ void AdminListPanel::RenderMemberList() {
 }
 
 void AdminListPanel::MakeUserAdmin(const char* username) {
-    wxGetApp().GetDatabase()->UpdateUserTypeByUsername(username, this->server_id, objects::Database::UserType::Admin);
+    int query_result = wxGetApp().GetDatabase()->UpdateHostedServerUsers(nullptr, objects::Database::UserType::Admin, std::nullopt, std::nullopt, this->server_id, username, std::nullopt);
+    if (query_result != 0) {
+        std::cout << "Failed to make " << username << " Admin" << std::endl;
+    }
 
     this->RenderMemberList();
     this->RenderAdminList();
 }
 
 void AdminListPanel::RemoveUserAdmin(const char* username) {
-    wxGetApp().GetDatabase()->UpdateUserTypeByUsername(username, this->server_id, objects::Database::UserType::Member);
+    int query_result = wxGetApp().GetDatabase()->UpdateHostedServerUsers(nullptr, objects::Database::UserType::Member, std::nullopt, std::nullopt, this->server_id, username, std::nullopt);
+    if (query_result != 0) {
+        std::cout << "Failed to make " << username << " Member" << std::endl;
+    }
 
     this->RenderMemberList();
     this->RenderAdminList();

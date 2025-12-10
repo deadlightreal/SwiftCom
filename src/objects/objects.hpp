@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <sqlite3.h>
 #include <arpa/inet.h>
 #include <cstdint>
@@ -53,15 +54,17 @@ namespace objects {
             ONLINE
         };
 
-        JoinedServer(const uint16_t server_id, const in_addr server_ip_address, const ServerStatus);
+        JoinedServer(const uint16_t server_id, const in_addr server_ip_address, const ServerStatus, const bool admin);
 
         uint16_t GetServerId();
         in_addr GetServerIpAddress();
         ServerStatus GetServerStatus();
+        bool IsAdmin();
     private:
         ServerStatus status;
         uint16_t server_id;
         in_addr server_ip_address;
+        bool admin;
     };
 
     class Database {
@@ -78,6 +81,7 @@ namespace objects {
         typedef struct {
             uint16_t server_id;
             in_addr ip_address;
+            uint32_t id;
         } JoinedServerRow;
 
         typedef struct {
@@ -85,17 +89,20 @@ namespace objects {
             const char* message;
             uint32_t message_length;
             uint32_t sender_id;
+            uint32_t channel_id;
         } ChannelMessageRow;
 
         typedef struct {
-            uint16_t id;
+            uint32_t id;
             char name[20];
+            uint16_t hosted_server_id;
         } ServerChatChannelRow;
 
         typedef struct {
             uint32_t id;
             char username[20];
             in_addr ip_address;
+            Database::UserType user_type;
         } HostedServerUser;
 
         typedef struct {
@@ -110,14 +117,11 @@ namespace objects {
         void InitializeDatabaseTables();
         void PrepareStatements();
 
-        std::vector<HostedServerRow>* SelectHostedServers();
-        std::vector<JoinedServerRow>* SelectJoinedServers();
-        std::vector<ServerChatChannelRow>* SelectServerChatChannels(const uint16_t server_id);
-        std::vector<ChannelMessageRow>* SelectChannelMessages(const uint32_t channel_id);
-        std::vector<HostedServerUser>* SelectHostedServerUsers(const uint16_t server_id);
-        std::vector<HostedServerUser>* SelectHostedServerUsersByUserType(const uint16_t server_id, const UserType user_type);
-
-        uint32_t SelectUserId(const in_addr_t ip_address, const uint32_t server_id);
+        std::vector<HostedServerRow>* SelectHostedServers(const std::optional<uint16_t> server_id);
+        std::vector<JoinedServerRow>* SelectJoinedServers(const std::optional<uint32_t> id, const std::optional<in_addr_t> ip_address, const std::optional<uint16_t> server_id);
+        std::vector<ServerChatChannelRow>* SelectServerChatChannels(const std::optional<uint32_t> id, const char* name, const std::optional<uint16_t> server_id);
+        std::vector<ChannelMessageRow>* SelectChannelMessages(const std::optional<uint32_t> id, const char* message, const std::optional<uint32_t> sender_id, const std::optional<uint32_t> channel_id);
+        std::vector<HostedServerUser>* SelectHostedServerUsers(const std::optional<uint16_t> server_id, const std::optional<Database::UserType> user_type, const char* username, const std::optional<in_addr_t> ip_address);
 
         int InsertHostedServer(const uint16_t server_id);
         int InsertHostedServerUser(const uint16_t server_id, in_addr ip_address, const char* username);
@@ -125,7 +129,7 @@ namespace objects {
         int InsertServerChatChannel(const char* name, const uint16_t server_id);
         int InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id);
 
-        int UpdateUserTypeByUsername(const char* username, const uint16_t server_id, const UserType user_type);
+        int UpdateHostedServerUsers(const char* new_username, const std::optional<Database::UserType> new_user_type, const std::optional<uint32_t> id, const std::optional<in_addr_t> ip_address, const std::optional<uint16_t> server_id, const char* username, const std::optional<Database::UserType> user_type);
 
         sqlite3_stmt* GetStatement(const char* statement_name);
 

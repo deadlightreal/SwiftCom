@@ -14,7 +14,7 @@
 
 using frames::ChatRoomFrame;
 
-static void packet_handler(SwiftNetClientPacketData* const packet_data) {
+static void packet_handler(SwiftNetClientPacketData* const packet_data, void* const user) {
 
 }
 
@@ -41,7 +41,7 @@ ChatRoomFrame::ChatRoomFrame(const in_addr ip_address, const uint16_t server_id)
 
     this->client_connection = connection;
 
-    swiftnet_client_set_message_handler(connection, packet_handler);
+    swiftnet_client_set_message_handler(connection, packet_handler, nullptr);
 
     this->LoadServerInformation();
 }

@@ -7,9 +7,9 @@
 #include "frames/frames.hpp"
 #include <swift_net.h>
 
-#define DEFAULT_TIMEOUT_CLIENT_CREATION 5000
-#define DEFAULT_TIMEOUT_REQUEST 5000
-#define LOOPBACK false 
+#define DEFAULT_TIMEOUT_CLIENT_CREATION 500
+#define DEFAULT_TIMEOUT_REQUEST 200
+#define LOOPBACK false
 
 // Request Types
 
@@ -22,7 +22,8 @@ enum RequestType {
     JOIN_SERVER,
     LOAD_SERVER_INFORMATION,
     LOAD_CHANNEL_DATA,
-    SEND_MESSAGE
+    SEND_MESSAGE,
+    LOAD_JOINED_SERVER_DATA
 };
 
 struct RequestInfo {
@@ -51,7 +52,6 @@ namespace requests {
     };
 
     struct LoadJoinedServerDataRequest {
-
     };
 }
 

@@ -1,14 +1,20 @@
 #include "panels.hpp"
 #include <arpa/inet.h>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
+#include <optional>
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <wx/event.h>
+#include <wx/osx/core/colour.h>
+#include <wx/timer.h>
 #include <wx/utils.h>
 #include <wx/wx.h>
 #include "../../../utils/net/net.hpp"
@@ -38,29 +44,73 @@ ServersPanel::ServersPanel(wxPanel* parent_panel) : wxPanel(parent_panel) {
 
     this->SetSizer(main_sizer_margin);
 
-    // Load joined servers
-    std::vector<objects::Database::JoinedServerRow>* joined_servers = wxGetApp().GetDatabase()->SelectJoinedServers();
+    this->RefreshServerInfo();
 
-    auto stored_joined_servers = this->GetJoinedServers();
+    this->refresh_servers_timer = new wxTimer(this, wxID_ANY);
 
-    for (auto &server : *joined_servers) {
-        SwiftNetClientConnection* const client = swiftnet_create_client(inet_ntoa(server.ip_address), server.server_id, DEFAULT_TIMEOUT_CLIENT_CREATION);
-        if (client == nullptr) {
-            stored_joined_servers->push_back(objects::JoinedServer(server.server_id, server.ip_address, objects::JoinedServer::ServerStatus::OFFLINE));
+    this->refresh_servers_timer->Start(5000);
 
-            continue;
-        }
-
-        swiftnet_client_cleanup(client);
-
-        stored_joined_servers->push_back(objects::JoinedServer(server.server_id, server.ip_address, objects::JoinedServer::ServerStatus::ONLINE));
-    }
-
-    free(joined_servers);
+    Bind(wxEVT_TIMER, [this](wxTimerEvent& event){this->RefreshServerInfo(); this->DrawServers();}, wxID_ANY);
 }
 
 ServersPanel::~ServersPanel() {
 
+}
+
+void ServersPanel::RefreshServerInfo() {
+    // Load joined servers
+    std::vector<objects::Database::JoinedServerRow>* joined_servers = wxGetApp().GetDatabase()->SelectJoinedServers(std::nullopt, std::nullopt, std::nullopt);
+
+    auto stored_joined_servers = this->GetJoinedServers();
+
+    stored_joined_servers->clear();
+    stored_joined_servers->reserve(joined_servers->size() * sizeof(objects::Database::JoinedServerRow));
+
+    for (auto &server : *joined_servers) {
+        printf("Joined server: %s %d\n", inet_ntoa(server.ip_address), server.server_id);
+        SwiftNetClientConnection* const client = swiftnet_create_client(inet_ntoa(server.ip_address), server.server_id, DEFAULT_TIMEOUT_CLIENT_CREATION);
+        if (client == nullptr) {
+            stored_joined_servers->push_back(objects::JoinedServer(server.server_id, server.ip_address, objects::JoinedServer::ServerStatus::OFFLINE, false));
+
+            continue;
+        }
+
+        SwiftNetPacketBuffer buffer = swiftnet_client_create_packet_buffer(sizeof(requests::LoadJoinedServerDataRequest) + sizeof(RequestInfo));
+
+        const RequestInfo request_info = {
+            .request_type = RequestType::LOAD_JOINED_SERVER_DATA
+        };
+
+        const requests::LoadJoinedServerDataRequest request = {
+        };
+
+        swiftnet_client_append_to_packet(&request_info, sizeof(request_info), &buffer);
+        swiftnet_client_append_to_packet(&request, sizeof(request), &buffer);
+
+        SwiftNetClientPacketData* response = swiftnet_client_make_request(client, &buffer, DEFAULT_TIMEOUT_REQUEST);
+        if (response == nullptr) {
+            swiftnet_client_destroy_packet_buffer(&buffer);
+
+            stored_joined_servers->push_back(objects::JoinedServer(server.server_id, server.ip_address, objects::JoinedServer::ServerStatus::OFFLINE, false));
+
+            continue;
+        }
+
+        swiftnet_client_destroy_packet_buffer(&buffer);
+
+        ResponseInfo* const response_info = (ResponseInfo*)swiftnet_client_read_packet(response, sizeof(ResponseInfo));
+        responses::LoadJoinedServerDataResponse* const server_data = (responses::LoadJoinedServerDataResponse*)swiftnet_client_read_packet(response, sizeof(responses::LoadJoinedServerDataResponse));
+
+        std::cout << "Admin: " << server_data->admin << std::endl;
+
+        stored_joined_servers->push_back(objects::JoinedServer(server.server_id, server.ip_address, objects::JoinedServer::ServerStatus::ONLINE, server_data->admin));
+
+        swiftnet_client_destroy_packet_data(response, client);
+
+        swiftnet_client_cleanup(client);
+    }
+
+    free(joined_servers);
 }
 
 void ServersPanel::DrawServers() {
@@ -80,6 +130,9 @@ void ServersPanel::DrawServers() {
         server_panel->SetMinSize(wxSize(-1, 30));
         server_panel->SetMaxSize(wxSize(-1, 30));
 
+        widgets::Circle* status = new widgets::Circle(server_panel, server.GetServerStatus() == objects::JoinedServer::ServerStatus::ONLINE ? wxColour(0, 255, 0) : wxColour(255, 0, 0));
+        status->SetMinSize(wxSize(30, 30));
+
         widgets::Button* start_server_button = new widgets::Button(server_panel, "Enter Server", [this, &server](wxMouseEvent& event){
             frames::ChatRoomFrame* chat_room_frame = nullptr;
 
@@ -95,6 +148,7 @@ void ServersPanel::DrawServers() {
 
             wxGetApp().AddChatRoomFrame(chat_room_frame);
         });
+
         start_server_button->SetMinSize(wxSize(-1, 30));
         start_server_button->SetMaxSize(wxSize(-1, 30));
 
@@ -104,8 +158,19 @@ void ServersPanel::DrawServers() {
 
         wxStaticText* joined_server_text = new wxStaticText(server_panel, wxID_ANY, wxString(joined_server_text_string));
 
-        button_sizer->Add(joined_server_text, 4, wxALIGN_CENTER_VERTICAL | wxLEFT, 10);
+
+        button_sizer->Add(status, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 5);
+        button_sizer->Add(joined_server_text, 4, wxALIGN_CENTER_VERTICAL | wxLEFT, 2);
         button_sizer->AddStretchSpacer(1);
+
+        if (server.IsAdmin()) {
+            widgets::Button* admin_button = new widgets::Button(server_panel, "Admin", [this, &server](wxMouseEvent& event){});
+            admin_button->SetMinSize(wxSize(-1, 30));
+            admin_button->SetMaxSize(wxSize(-1, 30));
+
+            button_sizer->Add(admin_button, 4, wxALIGN_CENTER_VERTICAL);
+        }
+
         button_sizer->Add(start_server_button, 4, wxALIGN_CENTER_VERTICAL);
 
         server_panel->SetSizer(button_sizer);

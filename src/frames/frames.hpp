@@ -32,6 +32,13 @@ namespace frames {
         uint8_t current_menu;
     };
 
+    class AdminMenuFrame : public wxFrame {
+    public:
+        AdminMenuFrame();
+        ~AdminMenuFrame();
+    private:
+    };
+
     class ServerSettingsFrame : public wxFrame {
     public:
         class AdminListPanel : public wxPanel {

@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <wx/event.h>
+#include <wx/osx/core/colour.h>
+#include <wx/panel.h>
 #include <wx/wx.h>
 
 namespace widgets {
@@ -16,6 +19,20 @@ namespace widgets {
         wxString label;
 
         bool hover = false;
+    };
+
+    class Circle : public wxPanel {
+    public:
+        Circle(wxWindow* parent, const wxColour color);
+        ~Circle();
+
+        void OnPaint(wxPaintEvent&);
+
+    private:
+        wxColour color;
+        uint32_t posX;
+        uint32_t posY;
+        uint32_t size;
     };
 
     class MenuBarButton : public wxControl {
