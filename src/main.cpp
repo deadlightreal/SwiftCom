@@ -63,6 +63,10 @@ std::vector<frames::ServerSettingsFrame*>* Application::GetServerSettingsFrames(
     return &this->server_settings_frames;
 }
 
+std::vector<frames::AdminMenuFrame*>* Application::GetAdminMenuFrames() {
+    return &this->admin_menu_frames;
+}
+
 frames::HomeFrame* Application::GetHomeFrame() {
     return this->home_frame;
 }

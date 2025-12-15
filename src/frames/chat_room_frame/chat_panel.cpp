@@ -15,8 +15,6 @@
 
 using ChatPanel = frames::ChatRoomFrame::ChatPanel;
 
-static ChatPanel* current_chat_panel = nullptr;
-
 static std::vector<objects::Database::ChannelMessageRow>* DeserializeChannelMessages(SwiftNetClientPacketData* packet_data, const uint32_t channel_messages_len) {
     auto result = new std::vector<objects::Database::ChannelMessageRow>();
 
@@ -41,8 +39,6 @@ static std::vector<objects::Database::ChannelMessageRow>* DeserializeChannelMess
 }
 
 ChatPanel::ChatPanel(const uint32_t channel_id, const uint16_t server_id, wxWindow* parent_window, const in_addr ip_address) : channel_id(channel_id), server_id(server_id), wxPanel(parent_window) {
-    current_chat_panel = this;
-
     this->InitializeConnection(ip_address);
 
     this->LoadChannelData();
@@ -77,8 +73,6 @@ ChatPanel::ChatPanel(const uint32_t channel_id, const uint16_t server_id, wxWind
 
 ChatPanel::~ChatPanel() {
     swiftnet_client_cleanup(this->GetClientConnection());
-
-    current_chat_panel = nullptr;
 }
 
 void ChatPanel::HandleLoadChannelDataRequest(SwiftNetClientPacketData* const packet_data) {
@@ -109,7 +103,7 @@ void ChatPanel::SendMessage(const char* message, const uint32_t message_len) {
         .request_type = SEND_MESSAGE
     };
 
-    requests::SendMessageRequest request_data = {
+    const requests::SendMessageRequest request_data = {
         .message_len = message_len,
         .channel_id = this->GetChannelId()
     };
@@ -132,6 +126,8 @@ void ChatPanel::InitializeConnection(const in_addr ip_address) {
         fprintf(stderr, "Failed to connect to server\n");
         return;
     }
+
+    this->client_connection = new_connection;
 }
 
 void ChatPanel::LoadChannelData() {

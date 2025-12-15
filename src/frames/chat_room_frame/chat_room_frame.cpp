@@ -108,6 +108,8 @@ void ChatRoomFrame::HandleLoadServerInfoResponse(SwiftNetClientPacketData* const
     for (uint32_t i = 0; i < request_data->server_chat_channels_size; i++) {
         auto channel = rows[i];
 
+        printf("Channel: %s, %d, %d\n", channel.name, channel.id, channel.hosted_server_id);
+
         this->GetChatChannels()->push_back(new ChatChannel(channel.id, channel.name));
     }
 
@@ -131,6 +133,8 @@ void ChatRoomFrame::LoadServerInformation() {
 
     SwiftNetClientPacketData* const packet_data = swiftnet_client_make_request(connection, &buffer, DEFAULT_TIMEOUT_REQUEST);
     if (packet_data == NULL) {
+        swiftnet_client_destroy_packet_buffer(&buffer);
+
         return;
     }
 

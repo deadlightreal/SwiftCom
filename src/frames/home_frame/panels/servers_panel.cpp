@@ -164,7 +164,10 @@ void ServersPanel::DrawServers() {
         button_sizer->AddStretchSpacer(1);
 
         if (server.IsAdmin()) {
-            widgets::Button* admin_button = new widgets::Button(server_panel, "Admin", [this, &server](wxMouseEvent& event){});
+            widgets::Button* admin_button = new widgets::Button(server_panel, "Admin", [this, &server](wxMouseEvent& event){
+                auto admin_frame = new frames::AdminMenuFrame(inet_ntoa(server.GetServerIpAddress()), server.GetServerId());
+                admin_frame->Show(true);
+            });
             admin_button->SetMinSize(wxSize(-1, 30));
             admin_button->SetMaxSize(wxSize(-1, 30));
 

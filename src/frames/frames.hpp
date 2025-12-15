@@ -34,9 +34,37 @@ namespace frames {
 
     class AdminMenuFrame : public wxFrame {
     public:
-        AdminMenuFrame();
+        AdminMenuFrame(const char* ip_address, const uint16_t server_id);
         ~AdminMenuFrame();
-    private:
+
+        void SelectedMenuChange();
+
+        class Channels : public wxPanel {
+            public:
+                Channels(wxWindow* parent, SwiftNetClientConnection* client_connection);
+                ~Channels();
+
+            private:
+                void OnAddChannel(wxMouseEvent& evt);
+                void LoadChannels();
+                void DrawChannelList();
+                int CreateNewTextChannel(const char* name);
+
+                wxScrolled<wxPanel>* scrollPanel;
+                wxBoxSizer* channelsSizer;
+
+                std::vector<objects::Database::ServerChatChannelRow> chat_channels;
+
+                DECLARE_EVENT_TABLE()
+
+                SwiftNetClientConnection* client_connection;
+        };
+
+        private:
+            SwiftNetClientConnection* client_connection;
+            widgets::MenuBar* menu_bar;
+            wxPanel* active_menu = nullptr;
+            AdminMenuFrame::Channels* channels_panel;
     };
 
     class ServerSettingsFrame : public wxFrame {

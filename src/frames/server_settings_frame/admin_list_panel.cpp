@@ -5,11 +5,13 @@
 #include <netinet/in.h>
 #include <optional>
 #include <wx/event.h>
+#include <wx/gdicmn.h>
 #include <wx/osx/stattext.h>
 #include <wx/panel.h>
 #include <wx/sizer.h>
 #include "../../main.hpp"
 #include <swift_net.h>
+#include <wx/wx.h>
 
 using AdminListPanel = frames::ServerSettingsFrame::AdminListPanel;
 
@@ -24,8 +26,13 @@ AdminListPanel::AdminListPanel(wxPanel* parent, const uint16_t server_id) : wxPa
     this->admin_list_panel->SetSizer(new wxBoxSizer(wxVERTICAL));
     this->admin_list_panel->SetMaxSize(wxSize(300, -1));
 
-    mainSizer->Add(this->member_list_panel, 0, wxTOP | wxALIGN_CENTER_HORIZONTAL, 50);
-    mainSizer->Add(this->admin_list_panel, 0, wxTOP | wxALIGN_CENTER_HORIZONTAL, 50);
+    wxStaticText* member_list_text = new wxStaticText(this, wxID_ANY, "Members");
+    wxStaticText* admin_list_text = new wxStaticText(this, wxID_ANY, "Admins");
+
+    mainSizer->Add(member_list_text, 0, wxTOP | wxALIGN_CENTER_HORIZONTAL, 50);
+    mainSizer->Add(this->member_list_panel, 0, wxTOP | wxALIGN_CENTER_HORIZONTAL, 5);
+    mainSizer->Add(admin_list_text, 0, wxTOP | wxALIGN_CENTER_HORIZONTAL, 50);
+    mainSizer->Add(this->admin_list_panel, 0, wxTOP | wxALIGN_CENTER_HORIZONTAL, 5);
 
     this->SetSizer(mainSizer);
 

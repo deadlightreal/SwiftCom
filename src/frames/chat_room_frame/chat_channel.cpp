@@ -1,10 +1,13 @@
 #include "../frames.hpp"
+#include <cstdio>
 #include <cstring>
 
 using namespace frames;
 
 ChatRoomFrame::ChatChannel::ChatChannel(const uint32_t id, char name[20]) : id(id) {
-    memcpy(this->name, name, sizeof(this->name));
+    printf("channel name: %s\n", name);
+
+    strncpy(this->name, name, sizeof(this->name));
 }
 
 ChatRoomFrame::ChatChannel::~ChatChannel() {

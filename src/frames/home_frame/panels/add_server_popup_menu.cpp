@@ -2,124 +2,177 @@
 #include "../../../main.hpp"
 #include "../../../utils/crypto/crypto.hpp"
 #include "../../../utils/net/net.hpp"
-#include <cstring>
 #include <swift_net.h>
 #include "../../../objects/objects.hpp"
+#include <wx/event.h>
+#include <wx/timer.h>
+#include <wx/valtext.h>
 
 using AddServerPopupMenu = frames::home_frame::panels::ServersPanel::AddServerPopupMenu;
 
-AddServerPopupMenu::AddServerPopupMenu(wxWindow* parent, wxPoint pos) : wxDialog(parent, wxID_ANY, wxT("Add Server"), pos, wxSize(400, 200), wxSTAY_ON_TOP | wxDEFAULT_DIALOG_STYLE) {
-    wxTextCtrl* server_code_input = new wxTextCtrl(this, 0, "Server Code");
-    wxTextCtrl* username_input = new wxTextCtrl(this, 0, "Username");
+AddServerPopupMenu::AddServerPopupMenu(wxWindow* parent, wxPoint pos) : wxDialog(parent, wxID_ANY, "Add Server", pos, wxSize(420, 320), wxSTAY_ON_TOP | wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
+{
 
-    widgets::Button* add_server_button = new widgets::Button(this, "Add Server", [this, server_code_input, username_input](wxMouseEvent& event) { 
-        AddServerPopupMenu::AddServerReturnCode return_code = AddServerPopupMenu::AddServer(server_code_input->GetValue(), username_input->GetValue());
+    auto* mainSizer = new wxBoxSizer(wxVERTICAL);
 
-        switch (return_code) {
-            case INVALID_LENGTH:
-                break;
-            case SUCCESS:
-                this->EndModal(wxID_CANCEL);
-                break;
+    auto* title = new wxStaticText(this, wxID_ANY, "Join a Server");
+    title->SetFont(title->GetFont().Scale(1.8).Bold());
+    title->SetForegroundColour(wxColour(255, 255, 255));
+    mainSizer->Add(title, 0, wxALIGN_CENTER | wxTOP | wxLEFT | wxRIGHT, 25);
+
+    auto* helpText = new wxStaticText(this, wxID_ANY, "Enter the server code and your username to join.");
+    helpText->SetForegroundColour(wxColour(180, 180, 190));
+    mainSizer->Add(helpText, 0, wxALIGN_CENTER | wxLEFT | wxRIGHT | wxBOTTOM, 20);
+
+    auto* codeLabel = new wxStaticText(this, wxID_ANY, "Server Code");
+    codeLabel->SetForegroundColour(wxColour(220, 220, 220));
+    codeLabel->SetFont(codeLabel->GetFont().Bold());
+    mainSizer->Add(codeLabel, 0, wxLEFT | wxTOP, 20);
+
+    auto* serverCodeInput = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(360, 40));
+    serverCodeInput->SetBackgroundColour(wxColour(50, 50, 60));
+    serverCodeInput->SetForegroundColour(*wxWHITE);
+    serverCodeInput->SetHint("e.g. ABCDE-12345-FGHIJ");
+    serverCodeInput->SetFont(serverCodeInput->GetFont().Scale(1.1));
+    mainSizer->Add(serverCodeInput, 0, wxALL | wxEXPAND, 12);
+
+    auto* userLabel = new wxStaticText(this, wxID_ANY, "Username");
+    userLabel->SetForegroundColour(wxColour(220, 220, 220));
+    userLabel->SetFont(userLabel->GetFont().Bold());
+    mainSizer->Add(userLabel, 0, wxLEFT, 20);
+
+    auto* usernameInput = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(360, 40));
+    usernameInput->SetBackgroundColour(wxColour(50, 50, 60));
+    usernameInput->SetForegroundColour(*wxWHITE);
+    usernameInput->SetHint("Your display name");
+    usernameInput->SetFont(usernameInput->GetFont().Scale(1.1));
+    mainSizer->Add(usernameInput, 0, wxALL | wxEXPAND, 12);
+
+    auto* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
+
+    auto* cancelBtn = new widgets::Button(this, "Cancel", [this](wxMouseEvent& evt){
+        this->EndModal(wxID_CLOSE);
+    });
+    cancelBtn->SetForegroundColour(*wxWHITE);
+    cancelBtn->SetFont(cancelBtn->GetFont().Bold().Scale(1.1));
+    cancelBtn->SetMinSize(wxSize(140, 45));
+
+    auto* addBtn = new widgets::Button(this, "Join Server", [this, serverCodeInput, usernameInput](wxMouseEvent&) {
+        wxString code = serverCodeInput->GetValue().Trim().Upper();
+        wxString username = usernameInput->GetValue().Trim();
+
+        if (code.IsEmpty()) {
+            wxMessageBox("Please enter a server code.", "Missing Code", wxOK | wxICON_WARNING, this);
+            return;
+        }
+        if (username.IsEmpty()) {
+            wxMessageBox("Please enter a username.", "Missing Username", wxOK | wxICON_WARNING, this);
+            return;
+        }
+        if (username.length() > 20) {
+            wxMessageBox("Username too long (max 20 chars).", "Invalid Username", wxOK | wxICON_ERROR, this);
+            return;
+        }
+
+        AddServerReturnCode result = AddServer(code, username);
+
+        if (result == SUCCESS) {
+            EndModal(wxID_OK);
         }
     });
 
-    add_server_button->SetMinSize(wxSize(-1, 20));
+    addBtn->SetForegroundColour(*wxWHITE);
+    addBtn->SetFont(addBtn->GetFont().Bold().Scale(1.1));
+    addBtn->SetMinSize(wxSize(140, 45));
 
-    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-    sizer->Add(server_code_input, 0, wxALIGN_CENTER | wxALL, 10);
-    sizer->Add(username_input, 0, wxALIGN_CENTER | wxALL, 10);
-    sizer->Add(add_server_button, 0, wxALL | wxEXPAND, 10);
-    sizer->Add(new wxButton(this, wxID_CANCEL, "Cancel"), 0, wxALIGN_CENTER | wxALL, 10);
-    SetSizerAndFit(sizer);
+    buttonSizer->Add(cancelBtn, 0);
+    buttonSizer->AddStretchSpacer();
+    buttonSizer->Add(addBtn, 0);
+
+    mainSizer->Add(buttonSizer, 1, wxALL | wxEXPAND, 10);
+
+    SetSizerAndFit(mainSizer);
+    CentreOnParent();
+
+    serverCodeInput->SetFocus();
 }
 
-AddServerPopupMenu::~AddServerPopupMenu() {
+AddServerPopupMenu::~AddServerPopupMenu() = default;
 
-}
-
-static void packet_handler(SwiftNetClientPacketData* const packet_data, void* const user) {
-    printf("Received packet\n");
-}
-
-enum AddServerPopupMenu::RequestServerExistationStatus AddServerPopupMenu::RequestServerExistsConfirmation(const char* ip_address, const uint16_t server_id, const in_addr address, const char* username) {
+AddServerPopupMenu::RequestServerExistationStatus AddServerPopupMenu::RequestServerExistsConfirmation(const char* ip_address, uint16_t server_id, const in_addr address, const char* username)
+{
     SwiftNetClientConnection* client = nullptr;
 
+    // Connect to local private IP if this is our own public IP
     if (address.s_addr == utils::net::get_public_ip().s_addr) {
         client = swiftnet_create_client(inet_ntoa(utils::net::get_private_ip()), server_id, DEFAULT_TIMEOUT_CLIENT_CREATION);
     } else {
         client = swiftnet_create_client(ip_address, server_id, DEFAULT_TIMEOUT_CLIENT_CREATION);
     }
 
-    if (client == nullptr) {
-        return AddServerPopupMenu::RequestServerExistationStatus::NO_RESPONSE;
+    if (!client) {
+        return NO_RESPONSE;
     }
 
-    swiftnet_client_set_message_handler(client, packet_handler, NULL);
-
-    const RequestInfo request_info = {.request_type = RequestType::JOIN_SERVER};
-
-    const requests::JoinServerRequest request_data = {};
-
-    strncpy((char*)request_data.username, username, sizeof(request_data.username));
+    RequestInfo request_info = { .request_type = RequestType::JOIN_SERVER };
+    requests::JoinServerRequest request_data = {};
+    strncpy(request_data.username, username, sizeof(request_data.username) - 1);
 
     auto buffer = swiftnet_client_create_packet_buffer(sizeof(request_info) + sizeof(request_data));
-
     swiftnet_client_append_to_packet(&request_info, sizeof(request_info), &buffer);
     swiftnet_client_append_to_packet(&request_data, sizeof(request_data), &buffer);
 
     SwiftNetClientPacketData* response = swiftnet_client_make_request(client, &buffer, DEFAULT_TIMEOUT_REQUEST);
-    if (response == nullptr) {
-        swiftnet_client_destroy_packet_buffer(&buffer);
-
-        return AddServerPopupMenu::RequestServerExistationStatus::NO_RESPONSE;
-    }
 
     swiftnet_client_destroy_packet_buffer(&buffer);
 
-    auto response_info_received = (ResponseInfo*)swiftnet_client_read_packet(response, sizeof(ResponseInfo));
-    auto response_data_received = (responses::JoinServerResponse*)swiftnet_client_read_packet(response, sizeof(responses::JoinServerResponse));
-
-    if (response_info_received->request_type != RequestType::JOIN_SERVER) {
-        return AddServerPopupMenu::RequestServerExistationStatus::UNKNOWN_RESPONSE;
+    if (!response) {
+        swiftnet_client_cleanup(client);
+        return NO_RESPONSE;
     }
 
-    in_addr parsed_ip_address;
-    inet_pton(AF_INET, ip_address, &parsed_ip_address);
+    auto* resp_info = (ResponseInfo*)swiftnet_client_read_packet(response, sizeof(ResponseInfo));
+    auto* resp_data = (responses::JoinServerResponse*)swiftnet_client_read_packet(response, sizeof(responses::JoinServerResponse));
 
-    if(response_info_received->request_status == Status::SUCCESS) {
-        wxGetApp().GetDatabase()->InsertJoinedServer(server_id, parsed_ip_address);
+    if (resp_info->request_type != RequestType::JOIN_SERVER) {
+        swiftnet_client_destroy_packet_data(response, client);
+        swiftnet_client_cleanup(client);
+        return UNKNOWN_RESPONSE;
+    }
 
-        ServersPanel* const servers_panel = wxGetApp().GetHomeFrame()->GetServersPanel();
+    if (resp_info->request_status == Status::SUCCESS) {
+        wxGetApp().GetDatabase()->InsertJoinedServer(server_id, address);
 
-        servers_panel->GetJoinedServers()->push_back(objects::JoinedServer(server_id, parsed_ip_address, objects::JoinedServer::ServerStatus::ONLINE, false));
-        
+        ServersPanel* servers_panel = wxGetApp().GetHomeFrame()->GetServersPanel();
+        servers_panel->GetJoinedServers()->emplace_back(server_id, address, objects::JoinedServer::ServerStatus::ONLINE, false);
         servers_panel->DrawServers();
     } else {
-        // Handle err
     }
 
     swiftnet_client_destroy_packet_data(response, client);
-
     swiftnet_client_cleanup(client);
 
-    return AddServerPopupMenu::RequestServerExistationStatus::SUCCESSFULLY_CONNECTED;
+    return SUCCESSFULLY_CONNECTED;
 }
 
-AddServerPopupMenu::AddServerReturnCode AddServerPopupMenu::AddServer(wxString server_code_input, wxString username_input) {
-    in_addr server_ip_address;
-    uint16_t server_id;
+AddServerPopupMenu::AddServerReturnCode AddServerPopupMenu::AddServer(wxString server_code_input, wxString username_input)
+{
+    std::vector<uint8_t> decoded = utils::crypto::base32_decode(server_code_input.ToStdString());
 
-    std::vector<uint8_t> decoded_code = utils::crypto::base32_decode(server_code_input.ToStdString());
+    if (decoded.size() < sizeof(in_addr) + sizeof(uint16_t)) {
+        wxMessageBox("Invalid or corrupted server code.", "Error", wxOK | wxICON_ERROR);
+        return INVALID_LENGTH;
+    }
 
-    memcpy(&server_ip_address, decoded_code.data(), sizeof(server_ip_address));
-    memcpy(&server_id, decoded_code.data() + sizeof(server_ip_address), sizeof(server_id));
+    in_addr server_ip{};
+    uint16_t server_id{};
 
-    in_addr public_ip_local = utils::net::get_public_ip();
+    memcpy(&server_ip, decoded.data(), sizeof(in_addr));
+    memcpy(&server_id, decoded.data() + sizeof(in_addr), sizeof(uint16_t));
 
-    const char* server_ip_string = inet_ntoa(server_ip_address);
+    const char* ip_str = inet_ntoa(server_ip);
 
-    this->RequestServerExistsConfirmation(server_ip_string, server_id, server_ip_address, username_input.c_str());
+    RequestServerExistsConfirmation(ip_str, server_id, server_ip, username_input.c_str());
 
     return SUCCESS;
 }

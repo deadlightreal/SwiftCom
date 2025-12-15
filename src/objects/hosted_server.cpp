@@ -116,6 +116,37 @@ static void HandleJoinServerRequest(HostedServer* server, SwiftNetServerPacketDa
     swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
 }
 
+static void HandleLoadAdminMenuDataRequest(HostedServer* server, SwiftNetServerPacketData* packet_data) {
+    auto const request = (requests::LoadAdminMenuDataRequest*)swiftnet_server_read_packet(packet_data, sizeof(requests::LoadAdminMenuDataRequest));
+
+    auto channels = wxGetApp().GetDatabase()->SelectServerChatChannels(std::nullopt, nullptr, server->GetServerId());
+
+    ResponseInfo response_info = {
+        .request_status = Status::SUCCESS,
+        .request_type = RequestType::LOAD_ADMIN_MENU_DATA
+    };
+
+    responses::LoadAdminMenuDataResponse response = {
+        .channels_size = static_cast<uint32_t>(channels->size())
+    };
+    
+    SwiftNetPacketBuffer buffer = swiftnet_server_create_packet_buffer(sizeof(responses::LoadAdminMenuDataResponse) + sizeof(ResponseInfo) + (channels->size() * (sizeof(objects::Database::ServerChatChannelRow))));
+
+    swiftnet_server_append_to_packet(&response_info, sizeof(response_info), &buffer);
+    swiftnet_server_append_to_packet(&response, sizeof(response), &buffer);
+
+    for (auto &channel : *channels) {
+        swiftnet_server_append_to_packet(&channel, sizeof(channel), &buffer);
+    }
+
+    swiftnet_server_make_response(server->GetServer(), packet_data, &buffer);
+
+    swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
+    swiftnet_server_destroy_packet_buffer(&buffer);
+
+    delete channels;
+}
+
 static void HandleLoadServerInformationRequest(HostedServer* server, SwiftNetServerPacketData* packet_data) {
     auto server_chat_channels = wxGetApp().GetDatabase()->SelectServerChatChannels(std::nullopt, nullptr, server->GetServerId());
 
@@ -136,10 +167,14 @@ static void HandleLoadServerInformationRequest(HostedServer* server, SwiftNetSer
     SwiftNetPacketBuffer buffer = swiftnet_server_create_packet_buffer(bytes_to_alloc + sizeof(response_info));
 
     swiftnet_server_append_to_packet(&response_info, sizeof(response_info), &buffer);
-    swiftnet_server_append_to_packet(&response_data, bytes_to_alloc, &buffer);
+    swiftnet_server_append_to_packet(&response_data, sizeof(response_data), &buffer);
 
     if (size > 0) {
         swiftnet_server_append_to_packet(server_chat_channels->data(), size * sizeof(Database::ServerChatChannelRow), &buffer);
+
+        for (auto &channel : *server_chat_channels) {
+            printf("%s, %d, %d\n", channel.name, channel.id, channel.hosted_server_id);
+        }
     }
 
     swiftnet_server_make_response(server_swiftnet, packet_data, &buffer);
@@ -207,6 +242,29 @@ static void HandleSendMessageRequest(HostedServer* server, SwiftNetServerPacketD
     swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
 }
 
+static void HandleCreateNewChannelRequest(HostedServer* server, SwiftNetServerPacketData* packet_data) {
+    auto request = (requests::CreateNewChannelRequest*)swiftnet_server_read_packet(packet_data, sizeof(requests::CreateNewChannelRequest));
+
+    int result = wxGetApp().GetDatabase()->InsertServerChatChannel(request->name, server->GetServerId());
+
+    const ResponseInfo response_info = {
+        .request_status = result == 0 ? Status::SUCCESS : Status::FAIL,
+        .request_type = RequestType::CREATE_NEW_CHANNEL
+    };
+
+    const responses::CreateNewChannelResponse response = {};
+
+    auto buffer = swiftnet_server_create_packet_buffer(sizeof(response_info) + sizeof(response));
+
+    swiftnet_server_append_to_packet(&response_info, sizeof(response_info), &buffer);
+    swiftnet_server_append_to_packet(&response, sizeof(response), &buffer);
+
+    swiftnet_server_make_response(server->GetServer(), packet_data, &buffer);
+
+    swiftnet_server_destroy_packet_buffer(&buffer);
+    swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
+}
+
 static void PacketCallback(SwiftNetServerPacketData* packet_data, void* const user) {
     const uint16_t server_id = packet_data->metadata.port_info.destination_port;
 
@@ -224,6 +282,8 @@ static void PacketCallback(SwiftNetServerPacketData* packet_data, void* const us
         case LOAD_CHANNEL_DATA: HandleLoadChannelDataRequest(server, packet_data); break;
         case SEND_MESSAGE: HandleSendMessageRequest(server, packet_data); break;
         case LOAD_JOINED_SERVER_DATA: HandleLoadJoinedServerDataRequest(server, packet_data); break;
+        case LOAD_ADMIN_MENU_DATA: HandleLoadAdminMenuDataRequest(server, packet_data); break;
+        case CREATE_NEW_CHANNEL: HandleCreateNewChannelRequest(server, packet_data); break;
     }
 }
 

@@ -23,7 +23,9 @@ enum RequestType {
     LOAD_SERVER_INFORMATION,
     LOAD_CHANNEL_DATA,
     SEND_MESSAGE,
-    LOAD_JOINED_SERVER_DATA
+    LOAD_JOINED_SERVER_DATA,
+    LOAD_ADMIN_MENU_DATA,
+    CREATE_NEW_CHANNEL
 };
 
 struct RequestInfo {
@@ -53,6 +55,13 @@ namespace requests {
 
     struct LoadJoinedServerDataRequest {
     };
+
+    struct LoadAdminMenuDataRequest {
+    };
+
+    struct CreateNewChannelRequest {
+        char name[20];
+    };
 }
 
 // Responses
@@ -72,6 +81,14 @@ namespace responses {
     struct LoadJoinedServerDataResponse {
         bool admin;
     };
+
+    struct LoadAdminMenuDataResponse {
+        uint32_t channels_size;
+    };
+
+    struct CreateNewChannelResponse {
+
+    };
 }
 
 class Application : public wxApp
@@ -88,6 +105,7 @@ public:
     frames::HomeFrame* GetHomeFrame();
     std::vector<frames::ChatRoomFrame*>* GetChatRoomFrames();
     std::vector<frames::ServerSettingsFrame*>* GetServerSettingsFrames();
+    std::vector<frames::AdminMenuFrame*>* GetAdminMenuFrames();
     frames::ChatRoomFrame* GetChatRoomFrameById(const uint16_t server_id);
 private:
     frames::HomeFrame* home_frame;
@@ -96,6 +114,7 @@ private:
 
     std::vector<frames::ChatRoomFrame*> chat_room_frames;
     std::vector<frames::ServerSettingsFrame*> server_settings_frames;
+    std::vector<frames::AdminMenuFrame*> admin_menu_frames;
 };
 
 wxDECLARE_APP(Application);

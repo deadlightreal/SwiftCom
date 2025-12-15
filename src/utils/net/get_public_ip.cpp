@@ -16,7 +16,7 @@ in_addr utils::net::get_public_ip() {
 
     addrinfo hints{};
     addrinfo* res;
-    hints.ai_family = AF_UNSPEC;
+    hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
     if (getaddrinfo(host, port, &hints, &res) != 0) {
