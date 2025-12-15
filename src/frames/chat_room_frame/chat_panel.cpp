@@ -6,11 +6,15 @@
 #include <cstring>
 #include <iterator>
 #include <vector>
+#include <wx/event.h>
+#include <wx/osx/stattext.h>
 #include <wx/osx/textctrl.h>
 #include <wx/panel.h>
 #include <wx/sizer.h>
 #include "../../utils/net/net.hpp"
 #include <wx/string.h>
+#include <wx/timer.h>
+#include <wx/wx.h>
 #include "../../main.hpp"
 
 using ChatPanel = frames::ChatRoomFrame::ChatPanel;
@@ -25,7 +29,9 @@ static std::vector<objects::Database::ChannelMessageRow>* DeserializeChannelMess
         const char* message = (const char*)swiftnet_client_read_packet(packet_data, *message_length);
 
         char* message_copy = (char*)malloc(*message_length);
-        memcpy(message_copy, message, *message_length);
+        strncpy(message_copy, message, *message_length);
+
+        printf("Received message: %s\n", message_copy);
 
         result->push_back((objects::Database::ChannelMessageRow){
             .message_length = *message_length,
@@ -41,13 +47,21 @@ static std::vector<objects::Database::ChannelMessageRow>* DeserializeChannelMess
 ChatPanel::ChatPanel(const uint32_t channel_id, const uint16_t server_id, wxWindow* parent_window, const in_addr ip_address) : channel_id(channel_id), server_id(server_id), wxPanel(parent_window) {
     this->InitializeConnection(ip_address);
 
-    this->LoadChannelData();
-
     // wxWidgets
     wxBoxSizer* main_sizer = new wxBoxSizer(wxVERTICAL);
 
     this->messages_panel = new wxPanel(this);
-    this->new_message_input = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
+    this->messages_sizer = new wxBoxSizer(wxVERTICAL);
+
+    this->messages_panel->SetSizer(this->messages_sizer);
+
+    auto* new_msg_input = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(360, 40), wxTE_PROCESS_ENTER);
+    new_msg_input->SetBackgroundColour(wxColour(50, 50, 60));
+    new_msg_input->SetForegroundColour(*wxWHITE);
+    new_msg_input->SetHint("Message Text");
+    new_msg_input->SetFont(new_msg_input->GetFont().Scale(1.1));
+
+    this->new_message_input = new_msg_input;
 
     this->GetNewMessageInput()->Bind(wxEVT_TEXT_ENTER, [this](wxCommandEvent& event) {
         wxString value = this->GetNewMessageInput()->GetValue();
@@ -66,13 +80,31 @@ ChatPanel::ChatPanel(const uint32_t channel_id, const uint16_t server_id, wxWind
     this->GetNewMessageInput()->SetMaxSize(wxSize(-1, 50));
 
     main_sizer->Add(this->GetMessagesPanel(), 1, wxEXPAND);
-    main_sizer->Add(this->GetNewMessageInput(), 0);
+    main_sizer->Add(this->GetNewMessageInput(), 0, wxEXPAND);
 
     this->SetSizer(main_sizer);
+
+    this->LoadChannelData();
+    this->RedrawMessages();
 }
 
 ChatPanel::~ChatPanel() {
     swiftnet_client_cleanup(this->GetClientConnection());
+}
+
+void ChatPanel::RedrawMessages() {
+    this->messages_sizer->Clear(true);
+
+    for (auto& message : *this->GetChannelMessages()) {
+        auto message_text = new wxStaticText(this->messages_panel, wxID_ANY, message.message);
+        message_text->SetFont(message_text->GetFont().Scale(1.8).Bold());
+        message_text->SetForegroundColour(wxColour(255, 255, 255));
+
+        this->messages_sizer->Add(message_text, 0);
+    }
+
+    Layout();
+    Refresh();
 }
 
 void ChatPanel::HandleLoadChannelDataRequest(SwiftNetClientPacketData* const packet_data) {
@@ -90,6 +122,8 @@ void ChatPanel::HandleLoadChannelDataRequest(SwiftNetClientPacketData* const pac
         // Handle errors
         return;
     }
+
+    printf("Channel messages got: %d\n", response->channel_messages_len);
 
     auto channel_messages = DeserializeChannelMessages(packet_data, response->channel_messages_len);
 

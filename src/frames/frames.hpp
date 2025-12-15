@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <wx/event.h>
 #include <wx/panel.h>
+#include <wx/sizer.h>
 #include <wx/wx.h>
 #include "../widgets/widgets.hpp"
 #include "home_frame/panels/panels.hpp"
@@ -135,6 +136,7 @@ namespace frames {
             wxTextCtrl* GetNewMessageInput();
         private:
             void HandleLoadChannelDataRequest(SwiftNetClientPacketData* const packet_data);
+            void RedrawMessages();
 
             SwiftNetClientConnection* client_connection;
             
@@ -143,6 +145,7 @@ namespace frames {
 
             wxTextCtrl* new_message_input;
             wxPanel* messages_panel;
+            wxBoxSizer* messages_sizer;
 
             std::vector<objects::Database::ChannelMessageRow> channel_messages;
         };
@@ -162,6 +165,8 @@ namespace frames {
         SwiftNetClientConnection* GetConnection();
         std::vector<ChatChannel*>* GetChatChannels();
     private:
+        void UpdateMainSizer();
+        
         wxPanel* channel_list_panel = nullptr;
 
         uint16_t server_id;
@@ -172,5 +177,8 @@ namespace frames {
         std::vector<ChatChannel*> chat_channels;
 
         ChatPanel* chat_panel = nullptr;
+
+        wxPanel* main_panel = nullptr;
+        wxBoxSizer* main_sizer = nullptr;
     };
 }

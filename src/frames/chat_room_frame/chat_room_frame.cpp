@@ -23,10 +23,13 @@ ChatRoomFrame::ChatRoomFrame(const in_addr ip_address, const uint16_t server_id)
 
     wxBoxSizer* main_sizer = new wxBoxSizer(wxHORIZONTAL);
 
+    this->main_panel = main_panel;
+    this->main_sizer = main_sizer;
+
     this->channel_list_panel = new wxPanel(main_panel);
     this->channel_list_panel->SetMinSize(wxSize(200, -1));
 
-    main_sizer->Add(this->channel_list_panel, 0, wxEXPAND);
+    this->UpdateMainSizer();
 
     main_panel->SetSizer(main_sizer);
 
@@ -63,6 +66,18 @@ ChatRoomFrame::~ChatRoomFrame() {
     swiftnet_client_cleanup(this->client_connection);
 }
 
+void ChatRoomFrame::UpdateMainSizer() {
+    main_sizer->Clear(false);
+
+    main_sizer->Add(this->channel_list_panel, 0, wxEXPAND);
+    if (this->chat_panel != nullptr) {
+        main_sizer->Add(this->chat_panel, 1, wxEXPAND);
+    }
+
+    Layout();
+    Refresh();
+}
+
 void ChatRoomFrame::DrawChannels() {
     this->channel_list_panel->DestroyChildren();
 
@@ -76,7 +91,9 @@ void ChatRoomFrame::DrawChannels() {
                 this->chat_panel = nullptr;
             }
 
-            this->chat_panel = new ChatPanel(channel->GetId(), this->GetServerId(), this, this->GetServerIpAddress());
+            this->chat_panel = new ChatPanel(channel->GetId(), this->GetServerId(), this->main_panel, this->GetServerIpAddress());
+
+            this->UpdateMainSizer();
         });
         channel_button->SetMinSize(wxSize(-1, 30));
         channel_button->SetMaxSize(wxSize(-1, 30));

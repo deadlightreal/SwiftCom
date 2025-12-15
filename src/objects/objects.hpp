@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <cstdint>
 #include <netinet/in.h>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 #include <swift_net.h>
@@ -20,32 +21,6 @@ namespace objects {
         uint16_t port;
         uint32_t user_id;
     } ConnectedUser;
-
-    class HostedServer {
-    public:
-        HostedServer(uint16_t id);
-        ~HostedServer();
-
-        void StartServer();
-        void StopServer();
-
-        void AddConnectedUser(const ConnectedUser connected_user);
-
-        ConnectedUser* GetUserByIp(const SwiftNetClientAddrData addr_data, const uint16_t port);
-
-        std::vector<ConnectedUser>* GetConnectedUsers();
-        SwiftNetServer* GetServer();
-        uint16_t GetServerId();
-        HostedServerStatus GetServerStatus();
-    private:
-        uint16_t id;
-
-        HostedServerStatus status = STOPPED;
-
-        SwiftNetServer* server = nullptr;
-
-        std::vector<ConnectedUser> connected_users;
-    };
 
     class JoinedServer {
     public:
@@ -138,5 +113,39 @@ namespace objects {
     private:
         sqlite3* database_connection;
         std::unordered_map<const char*, sqlite3_stmt*> statements;
+    };
+
+    class HostedServer {
+    public:
+        HostedServer(uint16_t id);
+        ~HostedServer();
+
+        void StartServer();
+        void StopServer();
+
+        void AddConnectedUser(const ConnectedUser connected_user);
+
+        ConnectedUser* GetUserByIp(const SwiftNetClientAddrData addr_data, const uint16_t port);
+
+        std::vector<ConnectedUser>* GetConnectedUsers();
+        SwiftNetServer* GetServer();
+        uint16_t GetServerId();
+        HostedServerStatus GetServerStatus();
+        std::vector<Database::ChannelMessageRow>* GetNewMessages();
+    private:
+        uint16_t id;
+
+        void BackgroundProcesses();
+        HostedServerStatus status = STOPPED;
+
+        _Atomic bool stop_background_processes;
+
+        std::thread* background_processes_thread = nullptr;
+
+        std::vector<Database::ChannelMessageRow> new_messages;
+
+        SwiftNetServer* server = nullptr;
+
+        std::vector<ConnectedUser> connected_users;
     };
 }

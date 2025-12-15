@@ -74,7 +74,7 @@ HostingPanel::HostingPanel(wxPanel* parent_panel) : wxPanel(parent_panel) {
     auto stored_hosted_servers = this->GetHostedServers();
 
     for (auto &server : *hosted_servers) {
-        stored_hosted_servers->push_back(objects::HostedServer(server.server_id));
+        stored_hosted_servers->emplace_back(server.server_id);
     }
 
     free(hosted_servers);

@@ -1,23 +1,81 @@
 #include "objects.hpp"
 #include <arpa/inet.h>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
+#include <pthread.h>
+#include <stdatomic.h>
 #include <swift_net.h>
+#include <unistd.h>
 #include <vector>
+#include <thread>
 #include "../main.hpp"
 
 using namespace objects;
 
 static void SerializeChannelMessages(SwiftNetPacketBuffer* buffer, std::vector<Database::ChannelMessageRow>* messages) {
     for (auto &message : *messages) {
+        const uint32_t new_message_len = message.message_length + 1;
+        
         swiftnet_server_append_to_packet(&message.id, sizeof(message.id), buffer);
-        swiftnet_server_append_to_packet(&message.sender_id, sizeof(message.id), buffer);
-        swiftnet_server_append_to_packet(&message.message_length, sizeof(message.id), buffer);
-        swiftnet_server_append_to_packet(&message.message, message.message_length + 1, buffer);
+        swiftnet_server_append_to_packet(&message.sender_id, sizeof(message.sender_id), buffer);
+        swiftnet_server_append_to_packet(&new_message_len, sizeof(message.message_length), buffer);
+        swiftnet_server_append_to_packet(message.message, message.message_length + 1, buffer);
+
+        printf("Serializing message: %s\n", message.message);
+    }
+}
+
+void HostedServer::BackgroundProcesses() {
+    while (true) {
+        if (atomic_load_explicit(&this->stop_background_processes, memory_order_acquire) == true) {
+            break;
+        }
+
+        if (this->GetNewMessages()->size() == 0) {
+            usleep(200000);
+            continue;
+        }
+
+        uint32_t bytes_to_allocate = sizeof(ResponseInfo) + sizeof(responses::LoadChannelDataResponse);
+
+        for (auto &new_message : *this->GetNewMessages()) {
+            bytes_to_allocate += new_message.message_length + 1;
+        }
+
+        const ResponseInfo response_info = {
+            .request_type = RequestType::LOAD_CHANNEL_DATA,
+            .request_status = Status::SUCCESS
+        };
+
+        const responses::LoadChannelDataResponse response = {
+            .channel_messages_len = static_cast<uint32_t>(this->GetNewMessages()->size())
+        };
+        
+        auto buffer = swiftnet_server_create_packet_buffer(bytes_to_allocate);
+
+        swiftnet_server_append_to_packet(&response_info, sizeof(response_info), &buffer);
+        swiftnet_server_append_to_packet(&response, sizeof(response), &buffer);
+
+        SerializeChannelMessages(&buffer, this->GetNewMessages());
+
+        for (auto &user : *this->GetConnectedUsers()) {
+            swiftnet_server_send_packet(this->GetServer(), &buffer, user.addr_data);
+        }
+
+        swiftnet_server_destroy_packet_buffer(&buffer);
+
+        for (auto &new_message : *this->GetNewMessages()) {
+            free((void*)new_message.message);
+        }
+
+        this->GetNewMessages()->clear();
+
+        usleep(200000);
     }
 }
 
@@ -66,6 +124,12 @@ static void HandleLoadChannelDataRequest(HostedServer* server, SwiftNetServerPac
 
     swiftnet_server_destroy_packet_buffer(&buffer);
     swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
+
+    for (auto& message : *channel_messages) {
+        free((void*)message.message);
+    }
+
+    delete channel_messages;
 }
 
 static void HandleJoinServerRequest(HostedServer* server, SwiftNetServerPacketData* packet_data) {
@@ -237,7 +301,21 @@ static void HandleSendMessageRequest(HostedServer* server, SwiftNetServerPacketD
         return;
     }
 
-    wxGetApp().GetDatabase()->InsertChannelMessage(message, request->channel_id, connected_user->user_id);
+    int result = wxGetApp().GetDatabase()->InsertChannelMessage(message, request->channel_id, connected_user->user_id);
+
+    if ((result < 0) == false) {
+        char* message_clone = (char*)malloc(request->message_len);
+
+        memcpy(message_clone, message, request->message_len);
+        
+        server->GetNewMessages()->push_back(objects::Database::ChannelMessageRow{
+            .message = message_clone,
+            .message_length = request->message_len,
+            .channel_id = request->channel_id,
+            .sender_id = connected_user->user_id,
+            .id = (uint32_t)result
+        });
+    }
 
     swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
 }
@@ -291,8 +369,7 @@ HostedServer::HostedServer(uint16_t id) : id(id) {
 
 };
 
-HostedServer::~HostedServer() {
-}
+HostedServer::~HostedServer() = default;
 
 void HostedServer::StartServer() {
     this->status = HostedServerStatus::RUNNING;
@@ -308,6 +385,12 @@ void HostedServer::StartServer() {
 
     this->server = new_server;
 
+    atomic_store_explicit(&this->stop_background_processes, false, memory_order_release);
+
+    this->background_processes_thread = new std::thread([this]() {
+        this->BackgroundProcesses();
+    });
+
     wxGetApp().GetHomeFrame()->GetHostingPanel()->DrawServers();
 }
 
@@ -319,6 +402,14 @@ void HostedServer::StopServer() {
     this->server = nullptr;
 
     this->connected_users.clear();
+
+    atomic_store_explicit(&this->stop_background_processes, true, memory_order_release);
+
+    this->background_processes_thread->join();
+
+    delete this->background_processes_thread;
+
+    this->background_processes_thread = nullptr;
 
     wxGetApp().GetHomeFrame()->GetHostingPanel()->DrawServers();
 }
@@ -347,6 +438,10 @@ SwiftNetServer* HostedServer::GetServer() {
 
 uint16_t HostedServer::GetServerId() {
     return this->id;
+}
+
+std::vector<objects::Database::ChannelMessageRow>* HostedServer::GetNewMessages() {
+    return &this->new_messages;
 }
 
 HostedServerStatus HostedServer::GetServerStatus() {
