@@ -15,6 +15,7 @@ AdminMenuFrame::AdminMenuFrame(const char* ip_address, uint16_t server_id) : wxF
     menu_bar = new widgets::MenuBar(main_panel, {"Text Channels"}, wxVERTICAL, [this]() {
         SelectedMenuChange();
     });
+    menu_bar->SetMinSize(wxSize(90, -1));
 
     client_connection = swiftnet_create_client(ip_address, server_id, DEFAULT_TIMEOUT_CLIENT_CREATION);
     if (!client_connection) {

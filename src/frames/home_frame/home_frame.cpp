@@ -15,6 +15,7 @@ HomeFrame::HomeFrame() : wxFrame(nullptr, wxID_ANY, "Home Frame", wxDefaultPosit
     this->menu_bar = new widgets::MenuBar(mainPanel, {"Servers", "Hosting"}, wxHORIZONTAL, [this](){
         this->SelectedMenuChange();
     });
+    this->menu_bar->SetMinSize(wxSize(-1, 30));
 
     this->hosting_panel = new home_frame::panels::HostingPanel(mainPanel);
     this->servers_panel = new home_frame::panels::ServersPanel(mainPanel);

@@ -47,13 +47,13 @@ void Database::PrepareStatements() {
         (Statement){.statement_name = "insert_joined_server", .query = "INSERT INTO joined_servers (ip_address, server_id) VALUES ($1, $2);"},
         (Statement){.statement_name = "insert_hosted_server", .query = "INSERT INTO hosted_servers (id) VALUES ($1);"},
         (Statement){.statement_name = "insert_server_chat_channel", .query = "INSERT INTO server_chat_channels (name, hosted_server_id) VALUES ($1, $2);"},
-        (Statement){.statement_name = "insert_channel_message", .query = "INSERT INTO channel_messages (message, channel_id, sender_id) VALUES ($1, $2, $3) RETURNING id;"},
+        (Statement){.statement_name = "insert_channel_message", .query = "INSERT INTO channel_messages (message, channel_id, sender_id) VALUES ($1, $2, $3) RETURNING channel_messages.id, (SELECT username FROM hosted_server_users WHERE id = channel_messages.sender_id) AS sender_username;"},
         (Statement){.statement_name = "update_hosted_server_users", .query = "UPDATE hosted_server_users SET username = COALESCE($1, username), user_type = COALESCE($2, user_type) WHERE ($3 IS NULL OR id = $3) AND ($4 IS NULL OR ip_address = $4) AND ($5 IS NULL OR server_id = $5) OR ($6 IS NULL OR username = $6) OR ($7 IS NULL OR user_type = $7);"},
         (Statement){.statement_name = "select_hosted_servers", .query = "SELECT id FROM hosted_servers WHERE ($1 IS NULL OR id = $1);"},
         (Statement){.statement_name = "select_joined_servers", .query = "SELECT id, ip_address, server_id FROM joined_servers WHERE ($1 IS NULL OR id = $1) AND ($2 IS NULL OR ip_address = $2) AND ($3 IS NULL OR server_id = $3);"},
         (Statement){.statement_name = "select_hosted_server_users", .query = "SELECT id, username, ip_address, user_type FROM hosted_server_users WHERE ($1 IS NULL OR server_id = $1) AND ($2 IS NULL OR user_type = $2) AND ($3 IS NULL OR username = $3) AND ($4 IS NULL OR ip_address = $4);"},
         (Statement){.statement_name = "select_server_chat_channels", .query = "SELECT id, name, hosted_server_id FROM server_chat_channels WHERE ($1 IS NULL OR $1 = id) AND ($2 IS NULL OR $2 = name) AND ($3 IS NULL OR $3 = hosted_server_id);"},
-        (Statement){.statement_name = "select_channel_messages", .query = "SELECT id, message, length(message), sender_id, channel_id FROM channel_messages WHERE ($1 IS NULL OR id = $1) AND ($2 IS NULL OR message = $2) AND ($3 IS NULL OR sender_id = $3) AND ($4 IS NULL OR channel_id = $4);"},
+        (Statement){.statement_name = "select_channel_messages", .query = "SELECT messages.id, messages.message, length(messages.message), messages.sender_id, messages.channel_id, users.username FROM channel_messages messages JOIN hosted_server_users users ON users.id = messages.sender_id WHERE ($1 IS NULL OR messages.id = $1) AND ($2 IS NULL OR messages.message = $2) AND ($3 IS NULL OR messages.sender_id = $3) AND ($4 IS NULL OR messages.channel_id = $4);"},
     };
 
     for(const auto& statement : statements) {
@@ -108,7 +108,7 @@ int Database::InsertHostedServerUser(const uint16_t server_id, in_addr ip_addres
     return 0;
 }
 
-int Database::InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id) {
+std::optional<Database::ChannelMessageRow> Database::InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id) {
     sqlite3_stmt* stmt = this->GetStatement("insert_channel_message");
 
     sqlite3_bind_text(stmt, 1, message, -1, SQLITE_TRANSIENT);
@@ -121,14 +121,27 @@ int Database::InsertChannelMessage(const char* message, const uint32_t channel_i
 
         sqlite3_reset(stmt);
 
-        return -1;
+        return std::nullopt;
     }
 
     int new_message_id = sqlite3_column_int(stmt, 0);
+    const char* username = (const char*)sqlite3_column_text(stmt, 1);
+
+    printf("DB MESSAGE INSERT USERNAME: %s\n", username);
+
+    Database::ChannelMessageRow row = {
+        .channel_id = channel_id,
+        .message = message,
+        .message_length = static_cast<uint32_t>(strlen(message)),
+        .id = static_cast<uint32_t>(new_message_id),
+        .sender_id = sender_id,
+    };
+
+    memcpy(row.sender_username, username, sizeof(row.sender_username));
 
     sqlite3_reset(stmt);
 
-    return new_message_id;
+    return row;
 }
 
 int Database::InsertJoinedServer(const uint16_t server_id, in_addr ip_address) {
@@ -285,18 +298,23 @@ std::vector<Database::ChannelMessageRow>* Database::SelectChannelMessages(const 
         const uint32_t message_length = sqlite3_column_int(stmt, 2);
         const uint32_t sender_id = sqlite3_column_int(stmt, 3);
         const uint32_t channel_id = sqlite3_column_int(stmt, 4);
+        const char* sender_username = (const char*)sqlite3_column_text(stmt, 5);
 
         char* message_clone = (char*)malloc(message_length + 1);
 
         memcpy(message_clone, message, message_length + 1);
 
-        result->push_back((Database::ChannelMessageRow){
+        auto message_row = (Database::ChannelMessageRow){
             .message = message_clone,
             .message_length = message_length,
             .id = id,
             .sender_id = sender_id,
             .channel_id = channel_id
-        });
+        };
+
+        memcpy(&message_row.sender_username, sender_username, sizeof(message_row.sender_username));
+
+        result->push_back(message_row);
     }
 
     sqlite3_reset(stmt);

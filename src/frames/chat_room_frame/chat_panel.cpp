@@ -34,12 +34,18 @@ static std::vector<objects::Database::ChannelMessageRow>* DeserializeChannelMess
 
         printf("Received message: %s\n", message_copy);
 
-        result->push_back((objects::Database::ChannelMessageRow){
+        auto message_row = (objects::Database::ChannelMessageRow){
             .message_length = *message_length,
             .sender_id = *sender_id,
             .id = *message_id,
             .message = message_copy
-        });
+        };
+
+        const char* const sender_username = (const char*)swiftnet_client_read_packet(packet_data, sizeof(message_row.sender_username));
+
+        memcpy(message_row.sender_username, sender_username, sizeof(message_row.sender_username));
+
+        result->push_back(message_row);
     }
 
     return result;
@@ -113,12 +119,10 @@ ChatPanel::~ChatPanel() {
 void ChatPanel::RedrawMessages() {
     this->messages_sizer->Clear(true);
 
-    const char* placeholder_username = "User123";
-
     for (const auto& msg : *this->GetChannelMessages()) {
         wxBoxSizer* row_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-        wxStaticText* username_text = new wxStaticText(this->messages_panel, wxID_ANY, wxString::Format("%s: ", placeholder_username));
+        wxStaticText* username_text = new wxStaticText(this->messages_panel, wxID_ANY, wxString::Format("%s: ", msg.sender_username));
         username_text->SetFont(username_text->GetFont().Scale(1.1f).Bold());
         username_text->SetForegroundColour(wxColour(180, 180, 255));
 

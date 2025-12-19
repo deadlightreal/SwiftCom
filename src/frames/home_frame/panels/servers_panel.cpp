@@ -132,6 +132,10 @@ void ServersPanel::DrawServers() {
         status->SetMinSize(wxSize(30, 30));
 
         widgets::Button* start_server_button = new widgets::Button(server_panel, "Enter Server", [this, &server](wxMouseEvent& event){
+            if (server.GetServerStatus() != objects::JoinedServer::ServerStatus::ONLINE) {
+                return;
+            }
+
             frames::ChatRoomFrame* chat_room_frame = nullptr;
 
             in_addr ip = server.GetServerIpAddress();

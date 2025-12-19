@@ -66,6 +66,7 @@ namespace objects {
             uint32_t message_length;
             uint32_t sender_id;
             uint32_t channel_id;
+            char sender_username[20];
         } ChannelMessageRow;
 
         typedef struct {
@@ -103,7 +104,7 @@ namespace objects {
         int InsertHostedServerUser(const uint16_t server_id, in_addr ip_address, const char* username);
         int InsertJoinedServer(const uint16_t server_id, in_addr ip_address);
         int InsertServerChatChannel(const char* name, const uint16_t server_id);
-        int InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id);
+        std::optional<ChannelMessageRow> InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id);
 
         int UpdateHostedServerUsers(const char* new_username, const std::optional<Database::UserType> new_user_type, const std::optional<uint32_t> id, const std::optional<in_addr_t> ip_address, const std::optional<uint16_t> server_id, const char* username, const std::optional<Database::UserType> user_type);
 

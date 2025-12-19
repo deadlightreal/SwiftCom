@@ -26,6 +26,7 @@ static void SerializeChannelMessages(SwiftNetPacketBuffer* buffer, std::vector<D
         swiftnet_server_append_to_packet(&message.sender_id, sizeof(message.sender_id), buffer);
         swiftnet_server_append_to_packet(&new_message_len, sizeof(message.message_length), buffer);
         swiftnet_server_append_to_packet(message.message, new_message_len, buffer);
+        swiftnet_server_append_to_packet(message.sender_username, sizeof(message.sender_username), buffer);
 
         printf("Serializing message: %s\n", message.message);
     }
@@ -55,11 +56,11 @@ void HostedServer::BackgroundProcesses() {
             if (it == channel_new_messages.end()) {
                 channel_new_messages.emplace(new_message.channel_id, (BackgroundProcessNewMessagesChannel){.bytes_to_allocate = sizeof(ResponseInfo) + sizeof(responses::PeriodicChatUpdateResponse), .messages = std::vector<objects::Database::ChannelMessageRow>()});
                 channel_new_messages.at(new_message.channel_id).messages.push_back(new_message);
-                channel_new_messages.at(new_message.channel_id).bytes_to_allocate += new_message.message_length + 1 + sizeof(new_message.message_length) + sizeof(new_message.id) + sizeof(new_message.sender_id);
+                channel_new_messages.at(new_message.channel_id).bytes_to_allocate += new_message.message_length + 1 + sizeof(new_message.message_length) + sizeof(new_message.id) + sizeof(new_message.sender_id) + sizeof(new_message.sender_username);
 
                 continue;
             } else {
-                it->second.bytes_to_allocate += new_message.message_length + 1 + sizeof(new_message.message_length) + sizeof(new_message.id) + sizeof(new_message.sender_id);
+                it->second.bytes_to_allocate += new_message.message_length + 1 + sizeof(new_message.message_length) + sizeof(new_message.id) + sizeof(new_message.sender_id) + sizeof(new_message.sender_username);
                 it->second.messages.push_back(new_message);
 
                 continue;
@@ -137,6 +138,7 @@ static void HandleLoadChannelDataRequest(HostedServer* server, SwiftNetServerPac
         bytes_to_allocate += sizeof(message.sender_id);
         bytes_to_allocate += sizeof(message.message_length);
         bytes_to_allocate += message.message_length + 1;
+        bytes_to_allocate += sizeof(message.sender_username);
     }
 
     const ResponseInfo response_info = {
@@ -336,20 +338,17 @@ static void HandleSendMessageRequest(HostedServer* server, SwiftNetServerPacketD
         return;
     }
 
-    int result = wxGetApp().GetDatabase()->InsertChannelMessage(message, request->channel_id, connected_user->user_id);
+    char* message_clone = (char*)malloc(request->message_len);
 
-    if ((result < 0) == false) {
-        char* message_clone = (char*)malloc(request->message_len);
+    memcpy(message_clone, message, request->message_len);
 
-        memcpy(message_clone, message, request->message_len);
-        
-        server->GetNewMessages()->push_back(objects::Database::ChannelMessageRow{
-            .message = message_clone,
-            .message_length = request->message_len - 1,
-            .channel_id = request->channel_id,
-            .sender_id = connected_user->user_id,
-            .id = (uint32_t)result
-        });
+    auto result = wxGetApp().GetDatabase()->InsertChannelMessage(message_clone, request->channel_id, connected_user->user_id);
+
+    if (result.has_value()) {
+        printf("new message username: %s\n", result.value().sender_username);
+        server->GetNewMessages()->push_back(result.value());
+    } else {
+        free(message_clone);
     }
 
     swiftnet_server_destroy_packet_data(packet_data, server->GetServer());

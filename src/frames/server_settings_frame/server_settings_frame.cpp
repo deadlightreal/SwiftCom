@@ -17,6 +17,7 @@ ServerSettingsFrame::ServerSettingsFrame(const uint16_t server_id, const in_addr
     this->menu_bar = new widgets::MenuBar(main_panel, {"Admin List"}, wxVERTICAL, [this](){
         this->SelectedMenuChange();
     });
+    this->menu_bar->SetMinSize(wxSize(90, -1));
 
     this->admin_list_panel = new ServerSettingsFrame::AdminListPanel(main_panel, server_id);
 
