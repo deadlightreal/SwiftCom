@@ -4,7 +4,7 @@
 
 ## SwiftCom is built on my custom **[SwiftNet networking library](https://github.com/Morcules/SwiftNet)** for full control over performance, usability, and privacy. The GUI is powered by **wxWidgets** for cross-platform support.
 
-## Any contributions or help are very welcome! 🚀
+## Any contributions or help are very welcome!
 
 ## Features
 
