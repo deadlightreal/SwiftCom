@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <optional>
 #include <sqlite3.h>
 #include <arpa/inet.h>
@@ -15,13 +16,6 @@ namespace objects {
         STOPPED,
         RUNNING
     } HostedServerStatus;
-
-    typedef struct {
-        SwiftNetClientAddrData addr_data;
-        uint16_t port;
-        uint32_t user_id;
-        uint32_t channel_id;
-    } ConnectedUser;
 
     class JoinedServer {
     public:
@@ -80,7 +74,7 @@ namespace objects {
             char username[20];
             in_addr ip_address;
             Database::UserType user_type;
-        } HostedServerUser;
+        } HostedServerUserRow;
 
         typedef struct {
             const char* statement_name;
@@ -98,10 +92,10 @@ namespace objects {
         std::vector<JoinedServerRow>* SelectJoinedServers(const std::optional<uint32_t> id, const std::optional<in_addr_t> ip_address, const std::optional<uint16_t> server_id);
         std::vector<ServerChatChannelRow>* SelectServerChatChannels(const std::optional<uint32_t> id, const char* name, const std::optional<uint16_t> server_id);
         std::vector<ChannelMessageRow>* SelectChannelMessages(const std::optional<uint32_t> id, const char* message, const std::optional<uint32_t> sender_id, const std::optional<uint32_t> channel_id);
-        std::vector<HostedServerUser>* SelectHostedServerUsers(const std::optional<uint16_t> server_id, const std::optional<Database::UserType> user_type, const char* username, const std::optional<in_addr_t> ip_address);
+        std::vector<HostedServerUserRow>* SelectHostedServerUsers(const std::optional<uint16_t> server_id, const std::optional<Database::UserType> user_type, const char* username, const std::optional<in_addr_t> ip_address);
 
         int InsertHostedServer(const uint16_t server_id);
-        int InsertHostedServerUser(const uint16_t server_id, in_addr ip_address, const char* username);
+        std::optional<HostedServerUserRow> InsertHostedServerUser(const uint16_t server_id, in_addr ip_address, const char* username);
         int InsertJoinedServer(const uint16_t server_id, in_addr ip_address);
         int InsertServerChatChannel(const char* name, const uint16_t server_id);
         std::optional<ChannelMessageRow> InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id);
@@ -117,6 +111,19 @@ namespace objects {
         std::unordered_map<const char*, sqlite3_stmt*> statements;
     };
 
+    enum ServerUserStatus {
+        ONLINE,
+        OFFLINE
+    };
+
+    struct ServerUser {
+        ServerUserStatus status;
+        Database::HostedServerUserRow data;
+        SwiftNetClientAddrData addr_data;
+        uint32_t active_channel_id;
+        std::chrono::time_point<std::chrono::steady_clock> time_since_last_request;
+    };
+
     class HostedServer {
     public:
         HostedServer(uint16_t id);
@@ -125,15 +132,14 @@ namespace objects {
         void StartServer();
         void StopServer();
 
-        void AddConnectedUser(const ConnectedUser connected_user);
+        ServerUser* GetUserByAddrData(const SwiftNetClientAddrData addr_data);
 
-        ConnectedUser* GetUserByIp(const SwiftNetClientAddrData addr_data, const uint16_t port);
-
-        std::vector<ConnectedUser>* GetConnectedUsers();
         SwiftNetServer* GetServer();
         uint16_t GetServerId();
         HostedServerStatus GetServerStatus();
         std::vector<Database::ChannelMessageRow>* GetNewMessages();
+        std::vector<ServerUser>* GetServerUsers();
+        void MarkUserOnline(ServerUser* const user);
     private:
         uint16_t id;
 
@@ -148,6 +154,6 @@ namespace objects {
 
         SwiftNetServer* server = nullptr;
 
-        std::vector<ConnectedUser> connected_users = {};
+        std::vector<ServerUser> server_users = {};
     };
 }

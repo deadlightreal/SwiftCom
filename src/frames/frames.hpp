@@ -184,6 +184,8 @@ namespace frames {
 
         ChatPanel* chat_panel = nullptr;
 
+        wxScrolled<wxPanel>* users_panel;
+
         wxPanel* main_panel = nullptr;
         wxBoxSizer* main_sizer = nullptr;
     };

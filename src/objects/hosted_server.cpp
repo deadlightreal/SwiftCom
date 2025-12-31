@@ -1,12 +1,11 @@
 #include "objects.hpp"
 #include <arpa/inet.h>
-#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <map>
 #include <optional>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -85,8 +84,40 @@ void HostedServer::BackgroundProcesses() {
             SerializeChannelMessages(&channel_new_message.buffer, &channel_new_message.messages);
         }
 
-        for (auto &user : *this->GetConnectedUsers()) {
-            auto it = channel_new_messages.find(user.channel_id);
+        for (auto &user : *this->GetServerUsers()) {
+            if (user.status == ServerUserStatus::OFFLINE) {
+                continue;
+            }
+
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = now - user.time_since_last_request;
+
+            if (elapsed > std::chrono::seconds(60)) {
+                const RequestInfo online_check_req_info = {
+                    .request_type = RequestType::CLIENT_ONLINE_CHECK
+                };
+
+                auto online_check_buffer = swiftnet_server_create_packet_buffer(sizeof(online_check_req_info));
+
+                swiftnet_server_append_to_packet(&online_check_req_info, sizeof(online_check_req_info), &online_check_buffer);
+
+                auto online_check_response = swiftnet_server_make_request(server, &online_check_buffer, user.addr_data, DEFAULT_TIMEOUT_REQUEST);
+
+                swiftnet_server_destroy_packet_buffer(&online_check_buffer);
+
+                if (online_check_response == nullptr) {
+                    user.status = ServerUserStatus::OFFLINE,
+                    memset(&user.addr_data, 0x00, sizeof(user.addr_data));
+
+                    continue;
+                }
+
+                this->MarkUserOnline(&user);
+
+                swiftnet_server_destroy_packet_data(online_check_response, server);
+            }
+
+            auto it = channel_new_messages.find(user.active_channel_id);
             if (it == channel_new_messages.end()) {
                 continue;
             }
@@ -113,20 +144,20 @@ static void HandleLoadChannelDataRequest(HostedServer* server, SwiftNetServerPac
 
     Database* database = wxGetApp().GetDatabase();
 
-    const auto query_result = database->SelectHostedServerUsers(server->GetServerId(), std::nullopt, nullptr, packet_data->metadata.sender.sender_address.s_addr);
-    if (query_result->size() == 0) {
+    ServerUser* user = server->GetUserByAddrData(packet_data->metadata.sender);
+    if (user == nullptr) {
+        printf("User is not registered as member of this server\n");
+        swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
         return;
     }
 
-    const auto user = query_result->at(0);
-
-    free(query_result);
-
-    ConnectedUser* connected_user_already = server->GetUserByIp(packet_data->metadata.sender, packet_data->metadata.port_info.source_port);
-    if (connected_user_already != nullptr) {
-        connected_user_already->channel_id = request_data->channel_id;
+    if (user->status == ServerUserStatus::ONLINE) {
+        user->active_channel_id = request_data->channel_id;
     } else {
-        server->AddConnectedUser((ConnectedUser){.addr_data = packet_data->metadata.sender, .user_id = user.id, .port = packet_data->metadata.port_info.source_port, .channel_id = request_data->channel_id});
+        user->addr_data = packet_data->metadata.sender;
+        printf("Setting addr data\n");
+        server->MarkUserOnline(user);
+        user->active_channel_id = request_data->channel_id;
     }
 
     auto channel_messages = database->SelectChannelMessages(std::nullopt, nullptr, std::nullopt, request_data->channel_id);
@@ -134,11 +165,7 @@ static void HandleLoadChannelDataRequest(HostedServer* server, SwiftNetServerPac
     uint32_t bytes_to_allocate = (sizeof(responses::LoadChannelDataResponse) + sizeof(ResponseInfo));
 
     for (auto &message : *channel_messages) {
-        bytes_to_allocate += sizeof(message.id);
-        bytes_to_allocate += sizeof(message.sender_id);
-        bytes_to_allocate += sizeof(message.message_length);
-        bytes_to_allocate += message.message_length + 1;
-        bytes_to_allocate += sizeof(message.sender_username);
+        bytes_to_allocate += sizeof(message.id) + sizeof(message.sender_id) + sizeof(message.message_length) + sizeof(message.sender_username) + message.message_length + 1;
     }
 
     const ResponseInfo response_info = {
@@ -177,8 +204,8 @@ static void HandleJoinServerRequest(HostedServer* server, SwiftNetServerPacketDa
 
     printf("Inserting user: %s %d\n", username, ip_address.s_addr);
 
-    int result = wxGetApp().GetDatabase()->InsertHostedServerUser(server_id, ip_address, username);
-    if (result != 0) {
+    auto result = wxGetApp().GetDatabase()->InsertHostedServerUser(server_id, ip_address, username);
+    if (!result.has_value()) {
         const ResponseInfo response_info = {
             .request_type = RequestType::JOIN_SERVER,
             .request_status = Status::FAIL
@@ -212,6 +239,8 @@ static void HandleJoinServerRequest(HostedServer* server, SwiftNetServerPacketDa
     swiftnet_server_append_to_packet(&response, sizeof(response), &buffer);
 
     swiftnet_server_make_response(server->GetServer(), packet_data, &buffer);
+
+    server->GetServerUsers()->push_back((ServerUser){.data = result.value(), .status = ServerUserStatus::OFFLINE, .addr_data = packet_data->metadata.sender});
 
     swiftnet_server_destroy_packet_buffer(&buffer);
     swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
@@ -329,8 +358,8 @@ static void HandleSendMessageRequest(HostedServer* server, SwiftNetServerPacketD
 
     const char* message = (const char*)swiftnet_server_read_packet(packet_data, request->message_len);
 
-    const ConnectedUser* connected_user = server->GetUserByIp(packet_data->metadata.sender, packet_data->metadata.port_info.source_port);
-    if (connected_user == nullptr) {
+    ServerUser* user = server->GetUserByAddrData(packet_data->metadata.sender);
+    if (user == nullptr || user->status == ServerUserStatus::OFFLINE) {
         std::cout << "User not connected" << std::endl;
 
         swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
@@ -342,7 +371,7 @@ static void HandleSendMessageRequest(HostedServer* server, SwiftNetServerPacketD
 
     memcpy(message_clone, message, request->message_len);
 
-    auto result = wxGetApp().GetDatabase()->InsertChannelMessage(message_clone, request->channel_id, connected_user->user_id);
+    auto result = wxGetApp().GetDatabase()->InsertChannelMessage(message_clone, request->channel_id, user->data.id);
 
     if (result.has_value()) {
         printf("new message username: %s\n", result.value().sender_username);
@@ -350,6 +379,8 @@ static void HandleSendMessageRequest(HostedServer* server, SwiftNetServerPacketD
     } else {
         free(message_clone);
     }
+
+    server->MarkUserOnline(user);
 
     swiftnet_server_destroy_packet_data(packet_data, server->GetServer());
 }
@@ -396,6 +427,7 @@ static void PacketCallback(SwiftNetServerPacketData* packet_data, void* const us
         case LOAD_JOINED_SERVER_DATA: HandleLoadJoinedServerDataRequest(server, packet_data); break;
         case LOAD_ADMIN_MENU_DATA: HandleLoadAdminMenuDataRequest(server, packet_data); break;
         case CREATE_NEW_CHANNEL: HandleCreateNewChannelRequest(server, packet_data); break;
+        default: break;
     }
 }
 
@@ -419,6 +451,14 @@ void HostedServer::StartServer() {
 
     this->server = new_server;
 
+    auto users = wxGetApp().GetDatabase()->SelectHostedServerUsers(this->GetServerId(), std::nullopt, nullptr, std::nullopt);
+    for (auto &user : *users) {
+        this->GetServerUsers()->push_back((ServerUser){
+            .data = user,
+            .status = ServerUserStatus::OFFLINE
+        });
+    }
+
     atomic_store_explicit(&this->stop_background_processes, false, memory_order_release);
 
     this->background_processes_thread = new std::thread([this]() {
@@ -435,7 +475,7 @@ void HostedServer::StopServer() {
 
     this->server = nullptr;
 
-    this->connected_users.clear();
+    this->server_users.clear();
 
     atomic_store_explicit(&this->stop_background_processes, true, memory_order_release);
 
@@ -448,13 +488,9 @@ void HostedServer::StopServer() {
     wxGetApp().GetHomeFrame()->GetHostingPanel()->DrawServers();
 }
 
-void HostedServer::AddConnectedUser(const ConnectedUser connected_user) {
-    this->GetConnectedUsers()->push_back(connected_user);
-}
-
-ConnectedUser* HostedServer::GetUserByIp(const SwiftNetClientAddrData addr_data, const uint16_t port) {
-    for (auto &user : *this->GetConnectedUsers()) {
-        if (port == user.port && memcmp(&addr_data, &user.addr_data, sizeof(SwiftNetClientAddrData)) == 0) {
+ServerUser* HostedServer::GetUserByAddrData(const SwiftNetClientAddrData addr_data) {
+    for (auto &user : *this->GetServerUsers()) {
+        if (user.data.ip_address.s_addr == addr_data.sender_address.s_addr) {
             return &user;
         }
     }
@@ -462,8 +498,13 @@ ConnectedUser* HostedServer::GetUserByIp(const SwiftNetClientAddrData addr_data,
     return nullptr;
 }
 
-std::vector<ConnectedUser>* HostedServer::GetConnectedUsers() {
-    return &this->connected_users;
+void HostedServer::MarkUserOnline(ServerUser* const user) {
+    user->status = ServerUserStatus::ONLINE;
+    user->time_since_last_request = std::chrono::steady_clock::now();
+}
+
+std::vector<ServerUser>* HostedServer::GetServerUsers() {
+    return &this->server_users;
 }
 
 SwiftNetServer* HostedServer::GetServer() {

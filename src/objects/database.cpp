@@ -1,5 +1,4 @@
 #include "objects.hpp"
-#include "../main.hpp"
 #include <cstdio>
 #include <cstring>
 #include <optional>
@@ -7,7 +6,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -43,7 +41,7 @@ void Database::OpenDatabase() {
 
 void Database::PrepareStatements() {
     const Statement statements[] = {
-        (Statement){.statement_name = "insert_hosted_server_user", .query = "INSERT INTO hosted_server_users (ip_address, server_id, username) VALUES ($1, $2, $3);"},
+        (Statement){.statement_name = "insert_hosted_server_user", .query = "INSERT INTO hosted_server_users (ip_address, server_id, username) VALUES ($1, $2, $3) RETURNING id;"},
         (Statement){.statement_name = "insert_joined_server", .query = "INSERT INTO joined_servers (ip_address, server_id) VALUES ($1, $2);"},
         (Statement){.statement_name = "insert_hosted_server", .query = "INSERT INTO hosted_servers (id) VALUES ($1);"},
         (Statement){.statement_name = "insert_server_chat_channel", .query = "INSERT INTO server_chat_channels (name, hosted_server_id) VALUES ($1, $2);"},
@@ -87,25 +85,35 @@ void Database::InitializeDatabaseTables() {
     }
 }
 
-int Database::InsertHostedServerUser(const uint16_t server_id, in_addr ip_address, const char* username) {
+std::optional<Database::HostedServerUserRow> Database::InsertHostedServerUser(const uint16_t server_id, in_addr ip_address, const char* username) {
     sqlite3_stmt* stmt = this->GetStatement("insert_hosted_server_user");
 
     sqlite3_bind_int(stmt, 1, ip_address.s_addr);
     sqlite3_bind_int(stmt, 2, server_id);
     sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT);
 
-    int result = sqlite3_step(stmt);
-    if (result != SQLITE_DONE) {
+    int result_code = sqlite3_step(stmt);
+    if (result_code != SQLITE_DONE) {
         std::cerr << "Failed to insert hosted_server_user" << std::endl;
         
         sqlite3_reset(stmt);
 
-        return -1;
+        return std::nullopt;
     }
+
+    uint32_t id = static_cast<uint32_t>(sqlite3_column_int(stmt, 0));
+
+    auto result = (Database::HostedServerUserRow){
+        .user_type = UserType::Member,
+        .id = id,
+        .ip_address = ip_address
+    };
+
+    memcpy(result.username, username, sizeof(result.username));
 
     sqlite3_reset(stmt);
 
-    return 0;
+    return result;
 }
 
 std::optional<Database::ChannelMessageRow> Database::InsertChannelMessage(const char* message, const uint32_t channel_id, const uint32_t sender_id) {
@@ -228,7 +236,7 @@ int Database::UpdateHostedServerUsers(const char* new_username, const std::optio
     return 0;
 } 
 
-std::vector<Database::HostedServerUser>* Database::SelectHostedServerUsers(const std::optional<uint16_t> server_id, const std::optional<Database::UserType> user_type, const char* username, const std::optional<in_addr_t> ip_address) {
+std::vector<Database::HostedServerUserRow>* Database::SelectHostedServerUsers(const std::optional<uint16_t> server_id, const std::optional<Database::UserType> user_type, const char* username, const std::optional<in_addr_t> ip_address) {
     sqlite3_stmt* stmt = this->GetStatement("select_hosted_server_users");
 
     server_id.has_value() ? sqlite3_bind_int(stmt, 1, server_id.value()) : sqlite3_bind_null(stmt, 1);
@@ -236,10 +244,10 @@ std::vector<Database::HostedServerUser>* Database::SelectHostedServerUsers(const
     username != nullptr ? sqlite3_bind_text(stmt, 3, username, -1, SQLITE_TRANSIENT) : sqlite3_bind_null(stmt, 3);
     ip_address.has_value() ? sqlite3_bind_int(stmt, 4, ip_address.value()) : sqlite3_bind_null(stmt, 4);
 
-    std::vector<Database::HostedServerUser>* result = new std::vector<Database::HostedServerUser>();
+    std::vector<Database::HostedServerUserRow>* result = new std::vector<Database::HostedServerUserRow>();
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        Database::HostedServerUser new_row = {
+        Database::HostedServerUserRow new_row = {
             .id = (uint16_t)sqlite3_column_int(stmt, 0),
             .ip_address = (in_addr_t)sqlite3_column_int(stmt, 2),
             .user_type = (Database::UserType)sqlite3_column_int(stmt, 3)

@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <iterator>
 #include <vector>
 #include <wx/event.h>
 #include <wx/osx/stattext.h>
@@ -12,7 +11,6 @@
 #include <wx/panel.h>
 #include <wx/scrolwin.h>
 #include <wx/sizer.h>
-#include "../../utils/net/net.hpp"
 #include <wx/string.h>
 #include <wx/timer.h>
 #include <wx/wx.h>

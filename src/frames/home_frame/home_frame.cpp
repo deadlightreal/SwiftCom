@@ -1,5 +1,3 @@
-#include <iostream>
-#include <ostream>
 #include <wx/event.h>
 #include <wx/panel.h>
 #include <wx/wx.h>

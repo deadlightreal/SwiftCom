@@ -1,5 +1,4 @@
 #include "crypto.hpp"
-#include <array>
 #include <cstdint>
 #include <iostream>
 #include <string>

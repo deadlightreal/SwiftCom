@@ -36,7 +36,7 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_link_libraries(main PRIVATE pcap)
 
-find_package(deadlightreal-swiftnet REQUIRED)
+find_package(morcules-swiftnet REQUIRED)
 target_link_libraries(main PRIVATE swiftnet::swiftnet)
 
 find_package(SQLite3 REQUIRED)

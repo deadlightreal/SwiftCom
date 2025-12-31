@@ -7,10 +7,10 @@
 #include <wx/osx/frame.h>
 #include <wx/osx/stattext.h>
 #include <wx/panel.h>
+#include <wx/scrolwin.h>
 #include <wx/sizer.h>
 #include <wx/versioninfo.h>
 #include "../../main.hpp"
-#include "../../utils/net/net.hpp"
 
 using frames::ChatRoomFrame;
 
@@ -28,6 +28,10 @@ ChatRoomFrame::ChatRoomFrame(const in_addr ip_address, const uint16_t server_id)
 
     this->channel_list_panel = new wxPanel(main_panel);
     this->channel_list_panel->SetMinSize(wxSize(200, -1));
+
+    this->users_panel = new wxScrolled<wxPanel>(main_panel);
+    this->users_panel->SetScrollRate(0, 20);
+    this->users_panel->SetMinSize(wxSize(200, -1));
 
     this->UpdateMainSizer();
 
@@ -72,7 +76,11 @@ void ChatRoomFrame::UpdateMainSizer() {
     main_sizer->Add(this->channel_list_panel, wxSizerFlags(0).Expand());
     if (this->chat_panel != nullptr) {
         main_sizer->Add(this->chat_panel, wxSizerFlags(1).Expand());
+    } else {
+        main_sizer->AddStretchSpacer(1);
     }
+
+    main_sizer->Add(this->users_panel, wxSizerFlags(0).Expand());
 
     main_panel->Layout();
     Layout();
